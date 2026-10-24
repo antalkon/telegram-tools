@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- frontend: React + Vite build ----
-FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend
+FROM --platform=$BUILDPLATFORM node:25-alpine AS frontend
 WORKDIR /src/frontend
 COPY frontend/package*.json ./
 RUN npm ci --no-audit --no-fund
