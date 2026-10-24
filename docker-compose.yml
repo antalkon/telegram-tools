@@ -1,0 +1,18 @@
+services:
+  tg-toolkit:
+    image: ghcr.io/antalkon/telegram-tools:latest
+    # `docker compose up -d --build` builds from source instead of pulling the image
+    build: .
+    container_name: tg-toolkit
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      TGT_ADMIN_PASSWORD: ${TGT_ADMIN_PASSWORD:?set TGT_ADMIN_PASSWORD in .env}
+      TGT_SECRET_KEY: ${TGT_SECRET_KEY:?set TGT_SECRET_KEY in .env}
+      TGT_COOKIE_SECURE: ${TGT_COOKIE_SECURE:-false}
+    volumes:
+      - tgt-data:/data
+
+volumes:
+  tgt-data:

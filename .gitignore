@@ -1,0 +1,36 @@
+# secrets & runtime data — never commit
+.env
+.env.*
+!.env.example
+data/
+backend/data/
+*.db
+*.db-shm
+*.db-wal
+*.session
+*.session-journal
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# node / frontend
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# editors & os
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# local tooling
+.claude/
