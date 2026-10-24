@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 
 from app.config import get_settings
-from app.security import COOKIE_NAME, check_password, issue_token, require_admin
+from app.security import COOKIE_NAME, Principal, check_password, issue_token, require_admin
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -33,6 +33,7 @@ async def logout(response: Response):
     return {"ok": True}
 
 
-@router.get("/me", dependencies=[Depends(require_admin)])
-async def me():
-    return {"user": "admin"}
+@router.get("/me")
+async def me(principal: Principal = Depends(require_admin)):
+    """Who is calling: the panel session or an API token (and its scope)."""
+    return {"user": "admin", "via": principal.kind, "scope": principal.scope}

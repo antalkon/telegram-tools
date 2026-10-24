@@ -16,6 +16,9 @@ export default function Login() {
     mutationFn: () => api('/auth/login', { method: 'POST', json: { password } }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['me'] })
+      // ?next= comes from server pages behind the login (the API docs); only same-site paths
+      const next = new URLSearchParams(location.search).get('next')
+      if (next?.startsWith('/api/') && !next.startsWith('//')) return window.location.assign(next)
       navigate((location.state as { from?: string } | null)?.from ?? '/', { replace: true })
     },
   })

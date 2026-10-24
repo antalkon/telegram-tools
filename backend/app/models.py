@@ -282,6 +282,21 @@ class Event(Base):
     delivery_error: Mapped[str | None] = mapped_column(Text)
 
 
+class ApiToken(Base):
+    """Personal access token for the HTTP API and the MCP server. Only its SHA-256 is stored."""
+
+    __tablename__ = "api_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64))
+    prefix: Mapped[str] = mapped_column(String(16))  # first characters, to tell tokens apart in the list
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    scope: Mapped[str] = mapped_column(String(8), default="read")  # read | full
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Setting(Base):
     __tablename__ = "settings"
 

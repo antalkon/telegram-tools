@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { GitCompareArrows, History, Layers, LayoutDashboard, LogOut, Menu, Network, Settings as SettingsIcon, Smartphone, TextSearch, Users, X } from 'lucide-react'
+import { BookOpen, GitCompareArrows, History, Layers, LayoutDashboard, LogOut, Menu, Network, Settings as SettingsIcon, Smartphone, TextSearch, Users, X } from 'lucide-react'
 import { NotificationBell } from '../components/NotificationBell'
 import { Suspense, useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -92,6 +92,10 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <NavItem to="/jobs" icon={<History className="size-4" />}>История задач</NavItem>
         <NavItem to="/accounts" icon={<Smartphone className="size-4" />}>Аккаунты</NavItem>
         <NavItem to="/settings" icon={<SettingsIcon className="size-4" />}>Настройки</NavItem>
+        <a href="/api/docs" target="_blank" rel="noreferrer"
+          className="flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13.5px] font-medium text-fg-muted transition-colors duration-150 hover:bg-elevated hover:text-fg">
+          <BookOpen className="size-4 text-fg-subtle" aria-hidden /> API-документация
+        </a>
       </div>
       <div className="mt-auto">
         <button

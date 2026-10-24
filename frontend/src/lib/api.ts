@@ -41,6 +41,16 @@ export const avatarUrl = (photoId: string | null | undefined) =>
 
 // ---------- types ----------
 
+export interface ApiToken {
+  id: number
+  name: string
+  prefix: string
+  scope: 'read' | 'full'
+  created_at: string
+  last_used_at: string | null
+  expires_at: string | null
+}
+
 export interface Account {
   id: number
   phone: string

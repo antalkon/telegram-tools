@@ -47,6 +47,10 @@ machine: one container and one SQLite file, with no cloud services. The UI is in
   - an audience-overlap matrix;
   - an interactive people ↔ channels graph.
 - **Export** to XLSX, CSV and JSON.
+- **HTTP API and MCP server.** Every panel feature is in the HTTP API, documented with
+  [Scalar](https://scalar.com) at `/api/docs` (OpenAPI 3.1). AI agents such as Claude Code, Claude Desktop and
+  Cursor connect to the built-in MCP server at `/mcp`. Both use API tokens from the settings page, read-only
+  or full access.
 - **Rate-limit aware:**
   - FloodWait countdowns, after which the job resumes where it stopped;
   - a ban on one request method is parked while the other methods keep running;
@@ -85,6 +89,7 @@ after the tests pass. Version tags `vX.Y.Z` also publish the `X.Y.Z` and `X.Y` t
 - [Deployment](docs/deployment.md): Docker, HTTPS reverse proxy, backups, updates, CI/CD
 - [Configuration](docs/configuration.md): `TGT_*` environment variables
 - [How it works](docs/how-it-works.md): Telegram internals, rate limits
+- [API and MCP](docs/api-and-mcp.md): tokens, HTTP API, connecting AI agents, the MCP tool list
 - [Development](docs/development.md): local setup, tests, demo data, adding a tool
 
 ## Responsible use

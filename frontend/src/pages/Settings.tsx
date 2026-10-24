@@ -2,12 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { Bell, Bot, Bookmark, Database, EyeOff, Send, Settings as SettingsIcon, Undo2 } from 'lucide-react'
 import { useState } from 'react'
+import { ApiTokensCard, McpCard } from '../components/ApiAccess'
 import { PeerLine } from '../components/PeerBits'
 import { useInvalidateAnalytics } from '../components/SourceActions'
 import { useToast } from '../components/Toast'
 import { Button, Card, CardHeader, EmptyState, Field, Input, Skeleton, Switch } from '../components/ui'
 import { Page, PageHeader } from '../layout/AppLayout'
-import { api, type Account, type Exclusions, type MaintenanceStats, type NotifySettings, type PeerCard } from '../lib/api'
+import { api, type Account, type ApiToken, type Exclusions, type MaintenanceStats, type NotifySettings, type PeerCard } from '../lib/api'
 import { num } from '../lib/format'
 
 function NotificationsCard() {
@@ -220,13 +221,18 @@ function MaintenanceCard() {
 }
 
 export default function Settings() {
+  const [fresh, setFresh] = useState<(ApiToken & { token: string }) | null>(null)
   return (
     <Page>
-      <PageHeader icon={<SettingsIcon className="size-5" />} title="Настройки" description="Уведомления, исключения из аналитики и обслуживание данных" />
+      <PageHeader icon={<SettingsIcon className="size-5" />} title="Настройки" description="Уведомления, исключения из аналитики, обслуживание данных, API и MCP" />
       <div className="flex flex-col gap-5">
         <NotificationsCard />
         <ExclusionsCard />
         <MaintenanceCard />
+        <section id="api" className="flex scroll-mt-6 flex-col gap-5">
+          <ApiTokensCard fresh={fresh} onCreated={setFresh} />
+          <McpCard token={fresh?.token ?? null} />
+        </section>
       </div>
     </Page>
   )

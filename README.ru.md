@@ -13,7 +13,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 [English](README.md) · [Развёртывание](docs/deployment.md) · [Настройки](docs/configuration.md) ·
-[Как это работает](docs/how-it-works.md) · [Разработка](docs/development.md)
+[Как это работает](docs/how-it-works.md) · [API и MCP](docs/api-and-mcp.md) · [Разработка](docs/development.md)
 
 </div>
 
@@ -70,6 +70,15 @@
 - **Граф связей** — интерактивная карта «люди ↔ каналы» и «каналы ↔ каналы».
 - **Экспорт** в XLSX / CSV / JSON почти из любого списка.
 
+### API и ИИ-агенты
+
+- **HTTP API**: всё, что умеет панель. Документация на [Scalar](https://scalar.com) по адресу `/api/docs`
+  (OpenAPI 3.1), закрыта логином.
+- **MCP-сервер** на `/mcp`: Claude Code, Claude Desktop, Cursor и другие агенты ищут по базе, читают профили
+  и аналитику, ведут метки и метаданные, запускают сборы.
+- **API-токены** создаются в настройках: «только чтение» или «полный доступ», можно задать срок действия
+  и отозвать в любой момент.
+
 ### Надёжность
 
 - Аккуратная работа с лимитами Telegram:
@@ -117,6 +126,7 @@ HTTPS, reverse proxy, бэкапы и обновление описаны в [do
 | [Развёртывание](docs/deployment.md) | Docker, Compose, теги образа, HTTPS, бэкап, обновление, CI/CD |
 | [Настройки](docs/configuration.md) | Переменные окружения `TGT_*` |
 | [Как это работает](docs/how-it-works.md) | Как устроены комментарии, чаты и профили в Telegram; лимиты и FloodWait |
+| [API и MCP](docs/api-and-mcp.md) | Токены, HTTP API, подключение ИИ-агентов, список MCP-инструментов |
 | [Разработка](docs/development.md) | Локальный запуск, тесты, демо-данные, структура, свой инструмент |
 | [Участие](CONTRIBUTING.md) · [Безопасность](SECURITY.md) | Как предложить изменение и сообщить об уязвимости |
 
@@ -144,4 +154,4 @@ cd frontend && npm install && npm run dev   # http://localhost:5173
 
 <sub>Ключевые слова: telegram parser, telegram scraper, парсер комментариев telegram, парсер участников чата,
 сбор аудитории телеграм, telegram osint, telegram analytics, telethon, mtproto, telegram channel comments,
-telegram group members export, поиск каналов telegram, пересечение аудиторий, self-hosted, fastapi, react, docker</sub>
+telegram group members export, поиск каналов telegram, пересечение аудиторий, telegram mcp server, mcp, openapi, scalar, self-hosted, fastapi, react, docker</sub>
