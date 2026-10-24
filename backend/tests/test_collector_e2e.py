@@ -122,7 +122,7 @@ async def run_job(monkeypatch, client, **params):
         await db.refresh(acc)
     runner = runner_mod.JobRunner()
     job = await runner.submit("comment-collector", acc.id, {"channel": "https://t.me/testchan", **params})
-    await runner._tasks[job.id]
+    await runner.wait(job.id)
     async with SessionLocal() as db:
         return await db.get(Job, job.id)
 

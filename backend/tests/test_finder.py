@@ -100,7 +100,7 @@ async def fenv(env, monkeypatch):
 
 async def find(env, **options):
     job = await env.runner.submit("channel-finder", env.account_id, options)
-    await env.runner._tasks[job.id]
+    await env.runner.wait(job.id)
     async with SessionLocal() as db:
         return await db.get(Job, job.id)
 

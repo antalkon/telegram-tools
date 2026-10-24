@@ -97,7 +97,7 @@ def use_client(monkeypatch, client):
 
 async def run(env, **params) -> Job:
     job = await env.runner.submit("comment-collector", env.account_id, {"channel": "@testchan", **params})
-    await env.runner._tasks[job.id]
+    await env.runner.wait(job.id)
     async with SessionLocal() as db:
         return await db.get(Job, job.id)
 
@@ -190,7 +190,7 @@ async def test_scheduler_runs_due_monitors(clean, monkeypatch):
     client.history += NEW_MESSAGES
     started = await scheduler.tick(now)
     assert len(started) == 1
-    await clean.runner._tasks[started[0]]
+    await clean.runner.wait(started[0])
     await scheduler.reconcile()
     async with SessionLocal() as db:
         m = await db.get(Monitor, due_id)
@@ -212,7 +212,7 @@ async def test_scheduler_reports_failures(clean, monkeypatch):
         db.add(Monitor(channel="@testchan", interval_minutes=60))
         await db.commit()
     [job_id] = await scheduler.tick()
-    await clean.runner._tasks[job_id]
+    await clean.runner.wait(job_id)
     await scheduler.reconcile()
     async with SessionLocal() as db:
         m = (await db.execute(select(Monitor))).scalars().one()

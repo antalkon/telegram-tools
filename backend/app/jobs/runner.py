@@ -113,6 +113,12 @@ class JobRunner:
         ctx.signals.add(name)
         return True
 
+    async def wait(self, job_id: int) -> None:
+        """Until the job's task ends; returns at once if it already finished (its task is gone by then)."""
+        task = self._tasks.get(job_id)
+        if task is not None:
+            await task
+
     def is_active(self, job_id: int) -> bool:
         task = self._tasks.get(job_id)
         return bool(task and not task.done())

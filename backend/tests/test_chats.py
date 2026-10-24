@@ -149,7 +149,7 @@ async def env(monkeypatch):
 
 async def index(env, tool="chat-indexer", link="@testgroup", **params) -> Job:
     job = await env.runner.submit(tool, env.account_id, {"channel": link, **params})
-    await env.runner._tasks[job.id]
+    await env.runner.wait(job.id)
     async with SessionLocal() as db:
         return await db.get(Job, job.id)
 
@@ -318,7 +318,7 @@ async def test_chat_monitor_uses_its_tool(env):
         db.add(m)
         await db.commit()
     started = await scheduler.tick(now)
-    await env.runner._tasks[started[0]]
+    await env.runner.wait(started[0])
     async with SessionLocal() as db:
         job = await db.get(Job, started[0])
         assert job.tool == "chat-indexer" and job.input["collect_members"] is False and job.status == "done", job.error
