@@ -36,7 +36,11 @@ export function words(family: Family | undefined) {
     : { item: 'комментарий', items: 'Комментариев', authors: 'Комментаторов', threads: 'Постов', author: 'комментатор' }
 }
 
-export const jobPath = (job: Pick<Job, 'id' | 'tool'>) => `/tools/${job.tool}/jobs/${job.id}`
+/** Where a job's results live: collectors have a per-job page, the other tools a page of their own. */
+const TOOL_PAGES: Record<string, string> = {
+  'channel-posts': '/tools/channel-posts', 'channel-finder': '/users/channels', 'username-check': '/users',
+}
+export const jobPath = (job: Pick<Job, 'id' | 'tool'>) => TOOL_PAGES[job.tool] ?? `/tools/${job.tool}/jobs/${job.id}`
 
 export function useAccounts() {
   return useQuery({ queryKey: ['accounts'], queryFn: () => api<Account[]>('/accounts') })

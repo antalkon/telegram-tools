@@ -64,6 +64,14 @@ def _photo(photo_id: int | None) -> str | None:
     return str(photo_id) if photo_id and avatar_path(photo_id).exists() else None
 
 
+VIAS = ("personal", "bio", "forward", "mention", "similar")
+
+
+def _no_via() -> dict[str, Any]:
+    """How a channel was found: counts of people/channels per way, plus "sender" (posts as itself)."""
+    return dict.fromkeys(VIAS, 0) | {"sender": False}
+
+
 def _link(f: FoundChannel) -> str | None:
     if f.username:
         return f"https://t.me/{f.username}"
@@ -78,16 +86,16 @@ async def _rows(db: AsyncSession) -> list[dict[str, Any]]:
     sources = set(await active_jobs(db, include_hidden=True))
     by_key: dict[str, dict[str, Any]] = {}
     for key, uid, via in links:
-        b = by_key.setdefault(key, {"users": [], "via": {"personal": 0, "bio": 0, "sender": False}})
+        b = by_key.setdefault(key, {"users": [], "via": _no_via()})
         if via == "sender":
             b["via"]["sender"] = True
             continue
-        b["via"][via] += 1
+        b["via"][via] = b["via"].get(via, 0) + 1
         if uid not in b["users"]:
             b["users"].append(uid)
     out = []
     for f in found:
-        b = by_key.get(f.key, {"users": [], "via": {"personal": 0, "bio": 0, "sender": False}})
+        b = by_key.get(f.key, {"users": [], "via": _no_via()})
         out.append({
             "key": f.key, "peer_id": f.peer_id, "type": f.type, "family": FAMILY.get(f.type or "", None),
             "title": f.title or (f"@{f.username}" if f.username else "Без названия"), "username": f.username,
@@ -108,7 +116,7 @@ CHANNEL_COLUMNS = [("title", "Название"), ("type", "Тип"), ("username
 async def found_channels(
     status: Literal["new", "sources", "dismissed", "all"] = "new",
     type: Literal["all", "channel", "chat", "private"] = "all",
-    via: Literal["all", "personal", "bio", "sender"] = "all",
+    via: Literal["all", "personal", "bio", "sender", "forward", "mention", "similar"] = "all",
     q: str = Query("", max_length=100),
     sort: Literal["users", "members", "found", "title"] = "users",
     offset: int = Query(0, ge=0),
@@ -135,7 +143,7 @@ async def found_channels(
             return False
         if via == "sender" and not r["via"]["sender"]:
             return False
-        if via in ("personal", "bio") and not r["via"][via]:
+        if via in VIAS and not r["via"][via]:
             return False
         return not needle or needle in (r["title"] or "").lower() or needle in (r["username"] or "").lower() \
             or needle in (r["about"] or "").lower()

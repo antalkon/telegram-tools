@@ -7,10 +7,11 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
-from app.insights import dossier, graph, sources, users
-from app.insights.common import EXCLUSION_DEFAULTS, EXCLUSIONS_KEY, cards, exclusion_opts, fts_query
+from app.insights import dossier, graph, graph_export, sources, users
+from app.insights.common import EXCLUSION_DEFAULTS, EXCLUSIONS_KEY, cards, exclusion_opts
+from app import reports
 from app.jobs.runner import runner
-from app.models import Event, Job, Monitor, PeerDossier, PeerFile, PeerNote, Setting, SourceMember, ThreadRoot
+from app.models import ChannelPost, Event, Job, Monitor, PeerDossier, PeerFile, PeerNote, Setting, SourceMember, ThreadRoot
 from app.security import require_admin
 from app.tools.comment_collector import export
 
@@ -22,6 +23,7 @@ USER_COLUMNS = [
     ("first_at", "Первое сообщение"), ("last_at", "Последнее сообщение"),
     ("is_premium", "Premium"), ("is_bot", "Бот"), ("is_scam", "Scam/Fake"), ("is_deleted", "Удалён"),
     ("tags", "Метки"), ("note", "Заметка"),
+    ("phone", "Телефон (Telegram)"), ("bio_phones", "Телефоны из bio"),
     ("full_name", "ФИО"), ("email", "Email"), ("contact_phone", "Телефон (вручную)"), ("country", "Страна"),
     ("city", "Город"), ("address", "Адрес"), ("passport", "Паспорт"),
 ]
@@ -36,8 +38,9 @@ def _ids(raw: str | None) -> list[int]:
 
 def _file(rows, fmt: str, name: str, columns) -> Response:
     for r in rows:
-        if isinstance(r.get("tags"), list):
-            r["tags"] = ", ".join(r["tags"])
+        for k in ("tags", "bio_phones"):
+            if isinstance(r.get(k), list):
+                r[k] = ", ".join(r[k])
     if fmt == "xlsx":
         body, media = export.to_xlsx(rows, columns=columns), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     elif fmt == "json":
@@ -62,9 +65,17 @@ async def get_graph(
     ids: str | None = None,
     family: Literal["all", "channel", "chat"] = "all",
     active_only: bool = False,
+    format: Literal["gexf", "graphml"] | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    return await graph.audience_graph(db, mode, min_sources, limit, _ids(ids) or None, family, active_only)
+    """format=gexf|graphml downloads the graph for Gephi, Maltego, yEd."""
+    data = await graph.audience_graph(db, mode, min_sources, limit, _ids(ids) or None, family, active_only)
+    return _graph_file(data, format, f"graph-{mode}") if format else data
+
+
+def _graph_file(data: dict, fmt: str, name: str) -> Response:
+    return Response(graph_export.render(data, fmt, name), media_type=graph_export.MEDIA[fmt],
+                    headers={"Content-Disposition": f'attachment; filename="{name}.{fmt}"'})
 
 
 # ---------- sources ----------
@@ -96,6 +107,7 @@ async def delete_source(source_id: int, db: AsyncSession = Depends(get_db)):
     await db.execute(delete(Monitor).where(Monitor.source_id == source_id))
     await db.execute(delete(Event).where(Event.source_id == source_id))
     await db.execute(delete(PeerNote).where(PeerNote.peer_id == source_id))
+    await db.execute(delete(ChannelPost).where(ChannelPost.channel_id == source_id))
     await db.commit()
     return {"deleted_jobs": len(job_ids)}
 
@@ -217,8 +229,10 @@ async def get_user_connections(peer_id: int, limit: int = Query(30, le=200), db:
 
 
 @router.get("/users/{peer_id}/graph")
-async def get_user_graph(peer_id: int, limit: int = Query(25, ge=5, le=100), db: AsyncSession = Depends(get_db)):
-    return await users.ego_graph(db, peer_id, limit)
+async def get_user_graph(peer_id: int, limit: int = Query(25, ge=5, le=100),
+                         format: Literal["gexf", "graphml"] | None = None, db: AsyncSession = Depends(get_db)):
+    data = await users.ego_graph(db, peer_id, limit)
+    return _graph_file(data, format, f"user-{peer_id}") if format else data
 
 
 class NoteIn(BaseModel):
@@ -287,10 +301,27 @@ async def delete_user_file(peer_id: int, file_id: int, db: AsyncSession = Depend
 async def search_people(q: str = Query("", max_length=300), limit: int = Query(20, ge=1, le=100),
                         db: AsyncSession = Depends(get_db)):
     """People whose hand-entered details or attached PDFs match the query."""
-    match = fts_query(q) if q.strip() else None
-    if match is None:
-        return {"total": 0, "items": []}
-    return await dossier.search_people(db, match, limit)
+    return await dossier.search_people(db, q, limit)
+
+
+# ---------- PDF reports ----------
+
+def _pdf(body: bytes | None, name: str) -> Response:
+    if body is None:
+        raise HTTPException(404, "Нет данных для отчёта")
+    return Response(body, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
+
+
+@router.get("/users/{peer_id}/report.pdf")
+async def user_report_pdf(peer_id: int, db: AsyncSession = Depends(get_db)):
+    """The person's profile as a PDF: Telegram data, metadata, activity, channels, contacts, history, messages."""
+    return _pdf(await reports.user_report(db, peer_id), f"user-{peer_id}")
+
+
+@router.get("/sources/{source_id}/report.pdf")
+async def source_report_pdf(source_id: int, db: AsyncSession = Depends(get_db)):
+    """A channel's or chat's analytics as a PDF: summary, activity, top people, posts, ads, contacts."""
+    return _pdf(await reports.source_report(db, source_id), f"source-{source_id}")
 
 
 @router.get("/tags")

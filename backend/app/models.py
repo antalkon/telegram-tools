@@ -76,12 +76,28 @@ class TgPeer(Base):
     is_scam: Mapped[bool] = mapped_column(Boolean, default=False)
     is_fake: Mapped[bool] = mapped_column(Boolean, default=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
-    phone: Mapped[str | None] = mapped_column(String(32))
+    phone: Mapped[str | None] = mapped_column(String(32))  # +digits, when the profile shows it; kept once seen
     # users, filled by the channel finder from the full profile
     about: Mapped[str | None] = mapped_column(Text)
+    bio_phones: Mapped[list[str]] = mapped_column(JSON, default=list, server_default="[]")  # E.164 numbers found in `about`
     personal_channel_id: Mapped[int | None] = mapped_column(BigInteger)  # marked id of the channel shown in the profile
     profile_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # channels and groups the account is not in: when Telegram created them
+    tg_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class PeerHistory(Base):
+    """A change of a peer's public profile seen between two collections (name, username, photo, bio…)."""
+
+    __tablename__ = "peer_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    peer_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    field: Mapped[str] = mapped_column(String(16))  # first_name | last_name | title | username | photo | about | phone
+    old: Mapped[str | None] = mapped_column(Text)
+    new: Mapped[str | None] = mapped_column(Text)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)  # when it was noticed
 
 
 class PeerAccess(Base):
@@ -117,7 +133,9 @@ class FoundChannel(Base):
 
 
 class FoundChannelLink(Base):
-    """Who points to a found channel and how (personal | bio | sender)."""
+    """Who points to a found channel and how: personal | bio | sender (people), forward | mention (people
+    or source channels whose messages forward from / mention it), similar (Telegram's recommendations for
+    a source channel)."""
 
     __tablename__ = "found_channel_links"
 
@@ -149,6 +167,7 @@ class Comment(Base):
     text: Mapped[str | None] = mapped_column(Text)
     # Group msg id this comment answers, when it answers another comment (not the post itself).
     reply_to: Mapped[int | None] = mapped_column(Integer)
+    fwd_from: Mapped[int | None] = mapped_column(BigInteger)  # marked id of the channel/chat it was forwarded from
 
     __table_args__ = (
         Index("ix_comments_job_sender", "job_id", "sender_id"),
@@ -280,6 +299,58 @@ class Event(Base):
     read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     delivery: Mapped[str | None] = mapped_column(String(16))  # sent | error | None (panel only)
     delivery_error: Mapped[str | None] = mapped_column(Text)
+
+
+class ChannelPost(Base):
+    """A post of a channel, read through the account or through the public t.me/s/ preview (no account).
+    Web-only channels have no numeric id: they are keyed by "@username"."""
+
+    __tablename__ = "channel_posts"
+
+    channel_key: Mapped[str] = mapped_column(String(80), primary_key=True)  # marked id, or "@username"
+    post_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    channel_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    username: Mapped[str | None] = mapped_column(String(64), index=True)  # lower case
+    date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    text: Mapped[str | None] = mapped_column(Text)
+    views: Mapped[int | None] = mapped_column(Integer)
+    forwards: Mapped[int | None] = mapped_column(Integer)
+    replies: Mapped[int | None] = mapped_column(Integer)
+    media: Mapped[bool] = mapped_column(Boolean, default=False)
+    links: Mapped[list[str]] = mapped_column(JSON, default=list)  # URLs behind text links and buttons
+    fwd_from: Mapped[int | None] = mapped_column(BigInteger)  # marked id of the forwarded-from channel
+    fwd_from_name: Mapped[str | None] = mapped_column(String(255))
+    fwd_from_username: Mapped[str | None] = mapped_column(String(64))
+    erid: Mapped[str | None] = mapped_column(String(64), index=True)  # ad marking token (RU law on advertising)
+    advertiser: Mapped[str | None] = mapped_column(String(255))
+    advertiser_inn: Mapped[str | None] = mapped_column(String(12))
+    via: Mapped[str] = mapped_column(String(8), default="account")  # account | web
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class OrgLookup(Base):
+    """A company or sole trader from the Russian state register (ЕГРЮЛ/ЕГРИП), looked up by ИНН or ОГРН."""
+
+    __tablename__ = "org_lookups"
+
+    query: Mapped[str] = mapped_column(String(15), primary_key=True)  # the ИНН / ОГРН asked for
+    found: Mapped[bool] = mapped_column(Boolean, default=False)
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    error: Mapped[str | None] = mapped_column(Text)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class UsernameCheck(Base):
+    """Whether a username exists on another public site (WhatsMyName data)."""
+
+    __tablename__ = "username_checks"
+
+    username: Mapped[str] = mapped_column(String(64), primary_key=True)  # lower case
+    site: Mapped[str] = mapped_column(String(128), primary_key=True)
+    category: Mapped[str | None] = mapped_column(String(64))
+    url: Mapped[str] = mapped_column(Text)
+    found: Mapped[bool] = mapped_column(Boolean, default=False)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class ApiToken(Base):

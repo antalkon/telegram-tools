@@ -11,6 +11,8 @@ import { Page } from '../layout/AppLayout'
 import { api, type SourceAnalytics } from '../lib/api'
 import { compact, date, num, relative } from '../lib/format'
 import { SourceActions } from '../components/SourceActions'
+import { ChannelContactsCard, ChannelPostsCard } from '../components/ChannelExtras'
+import { PdfButton } from '../components/Enrichment'
 
 export default function ChannelAnalytics() {
   const { sourceId: raw } = useParams()
@@ -72,6 +74,7 @@ export default function ChannelAnalytics() {
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" icon={<Users className="size-4" />} onClick={() => navigate(`/users?source=${s.id}`)}>{chat ? 'Люди' : 'Комментаторы'}</Button>
           <Button variant="ghost" icon={<TextSearch className="size-4" />} onClick={() => navigate(`/search?source=${s.id}`)}>Поиск</Button>
+          <PdfButton href={`/api/sources/${s.id}/report.pdf`} label="Отчёт PDF" />
           <SourceActions source={s} />
         </div>
       </Card>
@@ -87,6 +90,15 @@ export default function ChannelAnalytics() {
         )}
         <Stat icon={<Trophy className="size-3.5" />} label="Топ-10% пишут" value={pct(a.concentration.top10pct)} sub={`всех ${w.items.toLowerCase()}`} />
         <Stat icon={<Crown className="size-3.5" />} label="Premium" value={pct(seg.total ? seg.premium / seg.total : 0)} sub={`${num(seg.premium)} польз.`} />
+      </div>
+
+      <div className="mb-5 grid items-start gap-5 lg:grid-cols-2">
+        {chat ? <ChannelContactsCard sourceId={s.id} /> : (
+          <>
+            <ChannelPostsCard sourceId={s.id} username={s.username} />
+            <ChannelContactsCard sourceId={s.id} />
+          </>
+        )}
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">

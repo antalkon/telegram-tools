@@ -56,7 +56,7 @@ export function UserDrawer({ jobId, participant: p, chat, onClose }: { jobId: nu
               ['ID', String(p.peer_id), true],
               [chat ? 'Сообщений' : 'Комментариев', num(p.comments), true],
               [chat ? 'Дней / тем' : 'Постов', num(p.posts), true],
-              ['Телефон', p.phone ? `+${p.phone}` : '—', true],
+              ['Телефон', p.phone ?? '—', true],
               ['Первый', date(p.first_at), false],
               ['Последний', date(p.last_at), false],
             ] as const

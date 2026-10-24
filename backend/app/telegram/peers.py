@@ -3,10 +3,15 @@
 import time
 from typing import Any
 
+from sqlalchemy import func, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from telethon import TelegramClient, utils
 from telethon.tl import types
 
 from app.config import get_settings
+from app.telegram.contacts import tg_phone
+
+BATCH = 400
 
 
 def _photo_id(entity: Any) -> int | None:
@@ -42,9 +47,13 @@ def peer_row(entity: Any) -> dict[str, Any]:
             "is_bot": bool(entity.bot),
             "is_premium": bool(entity.premium),
             "is_deleted": bool(entity.deleted),
-            "phone": entity.phone,
+            "phone": tg_phone(entity.phone),
+            "tg_created_at": None,
         }
+    # Channel.date is the creation date unless the account is a member (then it's the join date)
+    created = getattr(entity, "date", None) if getattr(entity, "left", False) else None
     return base | {
+        "tg_created_at": created,
         "kind": "channel" if isinstance(entity, (types.Channel, types.ChannelForbidden)) else "chat",
         "first_name": None,
         "last_name": None,
@@ -54,6 +63,46 @@ def peer_row(entity: Any) -> dict[str, Any]:
         "is_deleted": False,
         "phone": None,
     }
+
+
+TRACKED = ("first_name", "last_name", "title", "username", "photo_id", "phone")
+
+
+async def upsert_peers(db, entities: list[Any]) -> None:
+    """Insert or refresh peers, logging what changed since last time to `peer_history`.
+    A phone, once seen, is kept: Telegram leaves it out whenever the profile is seen without access to
+    it ("min" users from chat messages, another account, privacy changes). Same for a creation date."""
+    from app.models import PeerHistory, TgPeer, utcnow
+
+    entities = [e for e in entities if isinstance(e, (types.User, types.Channel, types.ChannelForbidden, types.Chat))]
+    rows = {r["id"]: r | {"_min": bool(getattr(e, "min", False))} for e in entities for r in [peer_row(e)]}
+    if not rows:
+        return
+    now = utcnow()
+    ids = list(rows)
+    history = []
+    for i in range(0, len(ids), 900):
+        old = (await db.execute(select(TgPeer.id, *(getattr(TgPeer, f) for f in TRACKED))
+                                .where(TgPeer.id.in_(ids[i:i + 900])))).all()
+        for row in old:
+            new = rows[row[0]]
+            for f, before in zip(TRACKED, row[1:], strict=True):
+                after = new.get(f)
+                # only real changes: a first sighting, or a value missing from a partial ("min") profile, is not one
+                if before is None or after is None or before == after or (new["_min"] and f == "photo_id"):
+                    continue
+                history.append({"peer_id": row[0], "field": "photo" if f == "photo_id" else f,
+                                "old": str(before), "new": str(after), "changed_at": now})
+    values = [{k: v for k, v in r.items() if k != "_min"} for r in rows.values()]
+    for i in range(0, len(values), BATCH):
+        stmt = sqlite_insert(TgPeer).values(values[i:i + BATCH])
+        cols = {c: stmt.excluded[c] for c in values[0] if c not in ("id", "phone", "tg_created_at")}
+        cols["phone"] = func.coalesce(stmt.excluded.phone, TgPeer.phone)
+        cols["tg_created_at"] = func.coalesce(TgPeer.tg_created_at, stmt.excluded.tg_created_at)
+        cols["updated_at"] = now
+        await db.execute(stmt.on_conflict_do_update(index_elements=["id"], set_=cols))
+    if history:
+        await db.execute(sqlite_insert(PeerHistory), history)
 
 
 MISS_TTL = 24 * 3600  # don't retry a photo that failed to download for a day

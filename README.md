@@ -47,6 +47,15 @@ machine: one container and one SQLite file, with no cloud services. The UI is in
   - an audience-overlap matrix;
   - an interactive people ↔ channels graph.
 - **Export** to XLSX, CSV and JSON.
+- **Enrichment:**
+  - profile change history (name, username, photo, bio, phone) and an approximate account age;
+  - channel posts with views, forwards and ad marking (erid, advertiser ИНН), collected through the account
+    or without one, from the public `t.me/s/` preview;
+  - phones, e-mails, sites, crypto wallets, ИНН/ОГРН from bios, messages, channel descriptions and posts,
+    with company lookup in the Russian state register (ЕГРЮЛ);
+  - more channel discovery: forward sources, mentions in messages, Telegram's similar channels;
+  - the same username on ~600 other sites (WhatsMyName list);
+  - PDF reports for a person or a source, graph export to GEXF and GraphML (Gephi, yEd, Maltego).
 - **HTTP API and MCP server.** Every panel feature is in the HTTP API, documented with
   [Scalar](https://scalar.com) at `/api/docs` (OpenAPI 3.1). AI agents such as Claude Code, Claude Desktop and
   Cursor connect to the built-in MCP server at `/mcp`. Both use API tokens from the settings page, read-only

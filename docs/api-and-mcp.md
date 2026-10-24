@@ -43,6 +43,10 @@ curl -H "Authorization: Bearer tgt_…" "https://panel.example.com/api/users?lim
 | `GET /api/search/messages?q=…` | Полнотекстовый поиск по сообщениям |
 | `GET /api/search/people?q=…` | Поиск людей по метаданным и PDF |
 | `GET /api/users?format=xlsx` | Выгрузка; `format` работает почти у всех списков |
+| `GET /api/users/{id}/report.pdf`, `GET /api/sources/{id}/report.pdf` | PDF-отчёт по человеку или источнику |
+| `GET /api/graph?format=gexf` | Граф для Gephi; `graphml` — для yEd и Maltego |
+| `POST /api/tools/channel-posts/jobs` | Сбор постов: `{"channel": "@name", "via": "web"}` — без аккаунта |
+| `GET /api/orgs/{inn}` | Компания из ЕГРЮЛ/ЕГРИП по ИНН или ОГРН |
 
 ## MCP-сервер
 
@@ -101,12 +105,17 @@ claude mcp add --transport http tg-toolkit https://panel.example.com/mcp --heade
 | `get_user_file_text` | Текст PDF, прикреплённого к профилю |
 | `list_tags`, `list_found_channels` | Метки; каналы, найденные через людей |
 | `list_jobs`, `get_job`, `list_accounts` | Задачи сбора и их прогресс; подключённые аккаунты |
+| `get_user_contacts`, `get_channel_contacts` | Телефоны, email, сайты, кошельки, ИНН/ОГРН человека или канала |
+| `list_post_channels`, `list_posts` | Собранные посты: просмотры, репосты, первоисточник, реклама |
+| `list_advertisers`, `lookup_company` | Рекламодатели из маркированных постов; карточка компании из ЕГРЮЛ |
+| `get_username_sites` | Где ещё найден тот же username |
 
-**Изменения** (нужен полный доступ): `update_user_note` (метки, заметка, избранное, игнор) и
-`update_user_metadata` (ФИО, email, телефон, страна, город, адрес, паспорт).
+**Изменения** (нужен полный доступ): `update_user_note` (метки, заметка, избранное, игнор),
+`update_user_metadata` (ФИО, email, телефон, страна, город, адрес, паспорт) и `check_username` (проверка
+username на других сайтах, без Telegram).
 
 **Запросы в Telegram** (нужен полный доступ): `preview_link`, `collect_channel_comments`, `index_chat`,
-`rerun_source`, `find_user_channels`. Они работают от имени подключённого Telegram-аккаунта и
+`rerun_source`, `find_user_channels`, `collect_channel_posts` (с `via=web` — без аккаунта, через t.me/s). Они работают от имени подключённого Telegram-аккаунта и
 расходуют его лимиты. В описаниях инструментов агенту сказано запускать их только по просьбе
 пользователя.
 

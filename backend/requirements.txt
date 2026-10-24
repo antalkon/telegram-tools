@@ -12,3 +12,6 @@ httpx>=0.27
 pypdf>=5.0
 python-multipart>=0.0.9
 mcp>=2.3,<3
+phonenumbers>=8.13
+beautifulsoup4>=4.12
+fpdf2>=2.8

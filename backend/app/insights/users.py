@@ -4,13 +4,15 @@ from collections import Counter
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, Integer, cast, func, or_, select, text
+from sqlalchemy import BigInteger, Integer, String, cast, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.insights import dossier
+from app.telegram.age import account_age
+from app.telegram.contacts import digits_query
 from app.insights.common import active_jobs, cards, exclusion_opts, excluded_ids, excluded_select, fts_query, peer_card, sql
 from app.insights.sources import heatmap, list_sources, message_link, thread_label, timeline
-from app.models import JobParticipant, PeerNote, TgPeer, iso
+from app.models import JobParticipant, PeerHistory, PeerNote, TgPeer, iso
 
 SORTS = {
     "comments": "comments",
@@ -75,6 +77,8 @@ async def list_users(
                  func.ulower(PeerNote.note).like(like)]
         if s.lstrip("-").isdigit():
             conds.append(agg.c.peer_id == int(s))
+        if digits := digits_query(search):  # phone from the Telegram profile or written in the bio
+            conds += [func.replace(TgPeer.phone, "+", "").like(f"%{digits}%"), cast(TgPeer.bio_phones, String).like(f"%{digits}%")]
         if match := fts_query(search):  # hand-entered details and attached PDFs
             conds.append(agg.c.peer_id.in_(
                 text("SELECT peer_id FROM dossier_fts WHERE dossier_fts MATCH :dmatch").bindparams(dmatch=match).columns(peer_id=BigInteger)))
@@ -120,6 +124,7 @@ async def list_users(
             "first_at": iso(r.first_at), "last_at": iso(r.last_at),
             "source_ids": where_sources.get(r.peer_id, []),
             "note": r.PeerNote.note if r.PeerNote else None,
+            "bio_phones": (r.TgPeer.bio_phones or []) if r.TgPeer else [],
         })
     return total, out
 
@@ -197,6 +202,12 @@ async def user_profile(db: AsyncSession, peer_id: int) -> dict[str, Any] | None:
         "note": note.note if note else None,
         "dossier": await dossier.get_dossier(db, peer_id),
         "about": peer.about if peer else None,
+        "bio_phones": (peer.bio_phones or []) if peer else [],
+        "account_age": await account_age(db, peer_id),
+        "created_at": iso(peer.tg_created_at) if peer else None,  # channels the account is not in
+        "history": [{"field": h.field, "old": h.old, "new": h.new, "changed_at": iso(h.changed_at)}
+                    for h in (await db.execute(select(PeerHistory).where(PeerHistory.peer_id == peer_id)
+                                               .order_by(PeerHistory.changed_at.desc()).limit(100))).scalars()],
         "profile_checked_at": iso(peer.profile_checked_at) if peer else None,
         # channels found through this person: the one in the profile first, then bio mentions
         "channels": sorted(

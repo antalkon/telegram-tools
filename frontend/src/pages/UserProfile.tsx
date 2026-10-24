@@ -8,9 +8,10 @@ import { useState, type KeyboardEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Avatar } from '../components/Avatar'
 import { DossierCard, FilesCard } from '../components/Dossier'
+import { AccountAgeText, HistoryCard, PdfButton, UserContactsCard, UsernameSitesCard } from '../components/Enrichment'
 import { BarList, Heatmap, TimeBars } from '../components/charts'
 import { InteractiveGraph } from '../components/InteractiveGraph'
-import { Flags, PeerLine, Stat, pct } from '../components/PeerBits'
+import { ExportMenu, Flags, GRAPH_FORMATS, PeerLine, Stat, pct } from '../components/PeerBits'
 import { useToast } from '../components/Toast'
 import { Badge, Card, CardHeader, EmptyState, Segmented, Skeleton } from '../components/ui'
 import { Page } from '../layout/AppLayout'
@@ -248,7 +249,7 @@ export default function UserProfile() {
         <Card><EmptyState icon={<Hash className="size-5" />} title="Пользователь не найден" description={profile.error?.message} /></Card>
       </Page>
     )
-  const { peer: p, totals, sources, signals, note, about, channels, dossier } = profile.data
+  const { peer: p, totals, sources, signals, note, about, channels, dossier, bio_phones, account_age, history, created_at } = profile.data
   const copy = (v: string) => navigator.clipboard.writeText(v).then(() => toast(`Скопировано: ${v}`, 'success'))
 
   return (
@@ -280,21 +281,24 @@ export default function UserProfile() {
                 ID {p.peer_id} <Copy className="size-3" aria-hidden />
               </button>
               {p.usernames.length > 1 && <span>также: {p.usernames.slice(1).map((u) => `@${u}`).join(', ')}</span>}
-              {p.phone && <span className="font-mono">+{p.phone}</span>}
+              {p.phone && <a href={`tel:${p.phone}`} className="font-mono hover:text-fg">{p.phone}</a>}
               {p.username && (
                 <a href={`tg://resolve?domain=${p.username}`} className="flex items-center gap-1 hover:text-fg">открыть в Telegram</a>
               )}
+              {account_age && <AccountAgeText age={account_age} />}
+              {created_at && <span>создан {date(created_at)}</span>}
             </div>
             {about && <p className="mt-2 max-w-2xl text-[13.5px] whitespace-pre-line text-fg-muted">{about}</p>}
             <div className="mt-4 max-w-2xl">
               <TagEditor key={p.peer_id} peerId={p.peer_id} tags={p.tags} starred={p.starred} note={note} ignored={p.ignored} />
             </div>
           </div>
+          <PdfButton href={`/api/users/${p.peer_id}/report.pdf`} label="Отчёт PDF" />
         </div>
       </Card>
 
       <div className="mb-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <DossierCard key={`d${p.peer_id}`} peerId={p.peer_id} dossier={dossier} />
+        <DossierCard key={`d${p.peer_id}`} peerId={p.peer_id} dossier={dossier} tgPhone={p.phone} bioPhones={bio_phones} />
         <FilesCard peerId={p.peer_id} files={dossier.files} />
       </div>
 
@@ -314,6 +318,7 @@ export default function UserProfile() {
               icon={<Network className="size-4" />}
               title="Граф связей"
               description="Каналы и чаты, где он есть, и люди, с которыми он пересекается в обсуждениях и переписке"
+              actions={<ExportMenu size="sm" label="Граф" formats={GRAPH_FORMATS} href={(fmt) => `/api/users/${peerId}/graph?limit=25&format=${fmt}`} />}
             />
             <div className="p-3">
               {graph.data ? (
@@ -421,6 +426,9 @@ export default function UserProfile() {
               </div>
             </Card>
           )}
+          <UserContactsCard peerId={peerId} />
+          {p.username && <UsernameSitesCard username={p.username} />}
+          <HistoryCard history={history} />
           <ConnectionsCard peerId={peerId} />
           <Signals s={signals} />
         </div>

@@ -68,7 +68,20 @@ export function SourceStack({ ids, max = 4 }: { ids: number[]; max?: number }) {
   )
 }
 
-export function ExportMenu({ href, label = 'Экспорт' }: { href: (fmt: 'xlsx' | 'csv' | 'json') => string; label?: string }) {
+type ExportItem = { fmt: string; label: string; icon: typeof FileText }
+const TABLE_FORMATS: ExportItem[] = [
+  { fmt: 'xlsx', label: 'Excel (.xlsx)', icon: FileSpreadsheet },
+  { fmt: 'csv', label: 'CSV', icon: FileText },
+  { fmt: 'json', label: 'JSON', icon: FileJson },
+]
+export const GRAPH_FORMATS: ExportItem[] = [
+  { fmt: 'gexf', label: 'GEXF (Gephi)', icon: FileText },
+  { fmt: 'graphml', label: 'GraphML (yEd, Maltego)', icon: FileText },
+]
+
+export function ExportMenu<F extends string = 'xlsx' | 'csv' | 'json'>({ href, label = 'Экспорт', formats = TABLE_FORMATS, size = 'md' }: {
+  href: (fmt: F) => string; label?: string; formats?: ExportItem[]; size?: 'sm' | 'md'
+}) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -83,14 +96,10 @@ export function ExportMenu({ href, label = 'Экспорт' }: { href: (fmt: 'xl
       document.removeEventListener('keydown', close)
     }
   }, [open])
-  const items = [
-    { fmt: 'xlsx', label: 'Excel (.xlsx)', icon: FileSpreadsheet },
-    { fmt: 'csv', label: 'CSV', icon: FileText },
-    { fmt: 'json', label: 'JSON', icon: FileJson },
-  ] as const
+  const items = formats
   return (
     <div ref={ref} className="relative">
-      <Button variant="secondary" icon={<Download className="size-4" />} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <Button variant="secondary" size={size} icon={<Download className="size-4" />} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
         {label}
       </Button>
       {open && (
@@ -99,7 +108,7 @@ export function ExportMenu({ href, label = 'Экспорт' }: { href: (fmt: 'xl
             <a
               key={it.fmt}
               role="menuitem"
-              href={href(it.fmt)}
+              href={href(it.fmt as F)}
               download
               onClick={() => setOpen(false)}
               className="flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-sm text-fg-muted transition-colors hover:bg-muted hover:text-fg"

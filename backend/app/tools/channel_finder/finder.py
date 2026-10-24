@@ -16,18 +16,20 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from telethon import errors, utils
 from telethon.tl import functions, types
 
 from app.db import SessionLocal
 from app.insights.common import active_jobs, excluded_ids, sql
+from app.insights.sources import list_sources
 from app.jobs.runner import JobContext
-from app.models import FoundChannel, FoundChannelLink, PeerAccess, Setting, TgPeer, UsernameLookup, utcnow
+from app.models import ChannelPost, FoundChannel, FoundChannelLink, Job, PeerAccess, PeerHistory, Setting, TgPeer, UsernameLookup, utcnow
 from app.telegram.access import save_access
 from app.telegram.bio import Ref, extract_refs
-from app.telegram.peers import download_avatar, peer_row
+from app.telegram.contacts import extract_phones
+from app.telegram.peers import download_avatar, upsert_peers
 from app.telegram.resolve import source_type
 from app.tools.base import Tool, register
 from app.tools.comment_collector.collector import AVATAR_TIMEOUT, BATCH
@@ -53,6 +55,11 @@ class FinderInput(BaseModel):
     use_usernames: bool = True  # no stored access to a user: find them by @username (spends the resolve limit)
     fetch_details: bool = True
     download_avatars: bool = True
+    # beyond profiles: what the sources' messages and collected posts point to
+    from_forwards: bool = True  # channels messages/posts were forwarded from (no requests)
+    from_mentions: bool = True  # @mentions and t.me links in messages and posts (resolving spends the username limit)
+    mentions_limit: int = Field(100, ge=0, le=5000)  # new usernames from messages to resolve per run, most mentioned first
+    similar_channels: bool = True  # Telegram's "similar channels" for every source channel
 
 
 # Telegram rate-limits each method separately: a ban on username lookups (often many hours after a
@@ -126,7 +133,7 @@ async def add_links(db, links: set[tuple[str, int, str]]) -> None:
 class ChannelFinder(Tool):
     id = TOOL_ID
     title = "Каналы пользователей"
-    description = "Личные каналы из профилей, ссылки и @упоминания в bio"
+    description = "Каналы из профилей и bio, репостов, упоминаний в сообщениях и похожие каналы"
     Input = FinderInput
 
     async def run(self, ctx: JobContext, params: FinderInput) -> dict[str, Any]:
@@ -137,7 +144,8 @@ class ChannelFinder(Tool):
         self.ctx = ctx
         self.blocks = await load_blocks(ctx.account_id)  # bans left over from earlier runs
         stats: dict[str, Any] = {"via_username": 0, "waiting_username": 0, "checked": 0, "personal": 0, "with_bio_refs": 0, "no_access": 0, "senders": 0,
-                                 "resolved": 0, "resolve_cached": 0, "deferred": 0, "details": 0, "new_channels": 0}
+                                 "resolved": 0, "resolve_cached": 0, "deferred": 0, "details": 0, "new_channels": 0,
+                                 "forwards": 0, "mentions": 0, "similar": 0}
         self.entities: dict[int, Any] = {}  # channels seen this run, by marked id (for details / avatars)
         self.new_keys: set[str] = set()
 
@@ -155,8 +163,12 @@ class ChannelFinder(Tool):
         # phases are independent: one failing (network, unexpected Telegram error) doesn't lose the others
         failures: dict[str, str] = {}
         phases = [("profiles", lambda: self._profiles(ctx, client, users, stats))]
-        if params.check_bio and params.resolve_mentions:
-            phases.append(("resolve", lambda: self._resolve(ctx, client, stats)))
+        if params.from_forwards:
+            phases.append(("forwards", lambda: self._forwards(jobs, stats)))
+        if (params.check_bio and params.resolve_mentions) or params.from_mentions:
+            phases.append(("resolve", lambda: self._resolve(ctx, client, stats, params, jobs)))
+        if params.similar_channels:
+            phases.append(("similar", lambda: self._similar(ctx, client, stats)))
         if params.fetch_details:
             phases.append(("details", lambda: self._details(ctx, client, stats)))
         for name, phase in phases:
@@ -279,8 +291,12 @@ class ChannelFinder(Tool):
                     peers += list(chats.values())
                     if extract_refs(fu.about):
                         stats["with_bio_refs"] += 1
+                    old = (await db.execute(select(TgPeer.about, TgPeer.profile_checked_at).where(TgPeer.id == uid))).first()
+                    if old and old.profile_checked_at and (old.about or None) != (fu.about or None):
+                        db.add(PeerHistory(peer_id=uid, field="about", old=old.about, new=fu.about or None, changed_at=now))
                     await db.execute(update(TgPeer).where(TgPeer.id == uid).values(
-                        about=fu.about or None, personal_channel_id=personal, profile_checked_at=now))
+                        about=fu.about or None, bio_phones=extract_phones(fu.about), personal_channel_id=personal,
+                        profile_checked_at=now))
                 await _save_peer_rows(db, peers)
                 self.new_keys |= await upsert_found(db, found)
                 await add_links(db, links)
@@ -340,24 +356,33 @@ class ChannelFinder(Tool):
 
     # ---------- bio mentions ----------
 
-    async def _resolve(self, ctx, client, stats) -> None:
+    async def _resolve(self, ctx, client, stats, params: FinderInput, jobs: list[int]) -> None:
         """Resolve every bio reference not seen before (across all stored bios, so a postponed run
-        picks up where it stopped) and link the channels / chats to the users mentioning them."""
+        picks up where it stopped) plus the most mentioned new usernames from messages and posts, and
+        link the channels / chats to whoever points at them."""
         async with SessionLocal() as db:
-            bios = (await db.execute(select(TgPeer.id, TgPeer.about, TgPeer.username).where(
-                TgPeer.kind == "user", TgPeer.about.is_not(None)))).all()
-            by_ref: dict[str, tuple[Ref, set[int]]] = {}
-            for uid, about, own in bios:
-                for ref in extract_refs(about):
-                    if own and ref.username and ref.username.lower() == own.lower():
-                        continue
-                    by_ref.setdefault(ref.key, (ref, set()))[1].add(uid)
+            by_ref: dict[str, tuple[Ref, set[tuple[int, str]]]] = {}
+            if params.check_bio and params.resolve_mentions:
+                bios = (await db.execute(select(TgPeer.id, TgPeer.about, TgPeer.username).where(
+                    TgPeer.kind == "user", TgPeer.about.is_not(None)))).all()
+                for uid, about, own in bios:
+                    for ref in extract_refs(about):
+                        if own and ref.username and ref.username.lower() == own.lower():
+                            continue
+                        by_ref.setdefault(ref.key, (ref, set()))[1].add((uid, "bio"))
+            bio_keys = set(by_ref)
+            if params.from_mentions:
+                stats["mentions"] = await self._message_refs(db, jobs, by_ref)
             cache = {r.username: r for r in (await db.execute(select(UsernameLookup).where(
                 UsernameLookup.username.in_(list(by_ref) or [""])))).scalars()}
             # usernames of peers already in the DB need no request
             known = {u.lower(): (k, i) for i, k, u in (await db.execute(select(TgPeer.id, TgPeer.kind, TgPeer.username).where(
                 func.lower(TgPeer.username).in_([k for k in by_ref if not k.startswith("+")] or [""])))).all()}
-        todo = [k for k in by_ref if k not in cache]
+        # bio references always; from messages only the most mentioned new ones (each costs a ResolveUsername)
+        extra = sorted((k for k in by_ref if k not in bio_keys and k not in cache and k not in known),
+                       key=lambda k: -len(by_ref[k][1]))[:params.mentions_limit]
+        todo = [k for k in by_ref if k in bio_keys and k not in cache] + [k for k in by_ref if k in known and k not in cache] + extra
+        todo = list(dict.fromkeys(todo))
         await ctx.update(force=True, phase="resolve", resolve_total=len(todo), resolve_done=0)
         stats["resolve_cached"] = len(by_ref) - len(todo)
 
@@ -390,8 +415,81 @@ class ChannelFinder(Tool):
                     await ctx.update(resolve_done=i)
         finally:
             await save()
-            await self._link_bio(by_ref)
+            await self._link_refs(by_ref)
             await ctx.update(force=True, resolve_done=stats["resolved"])
+
+    async def _message_refs(self, db, jobs: list[int], by_ref: dict) -> int:
+        """@mentions and t.me links in the sources' messages (pointer: the author) and in collected posts
+        (pointer: the channel), plus web-preview forwards known only by username. Returns refs found."""
+        n = 0
+        own = {u.lower() for (u,) in (await db.execute(select(TgPeer.username).where(
+            TgPeer.id.in_(select(Job.source_id).where(Job.id.in_(jobs or [-1]))), TgPeer.username.is_not(None)))).all()}
+
+        def add(ref: Ref, pointer: int, via: str) -> None:
+            nonlocal n
+            if ref.username and ref.username.lower() in own:
+                return  # a source linking to itself
+            by_ref.setdefault(ref.key, (ref, set()))[1].add((pointer, via))
+            n += 1
+
+        rows = await sql(db, "SELECT sender_id, text FROM comments WHERE job_id IN :jobs AND text IS NOT NULL "
+                             "AND (text LIKE '%@%' OR text LIKE '%t.me/%' OR text LIKE '%telegram.me/%')", jobs)
+        for sender, body in rows:
+            for ref in extract_refs(body):
+                add(ref, sender, "mention")
+        for cid, body, links, fwd_user in (await db.execute(select(
+                ChannelPost.channel_id, ChannelPost.text, ChannelPost.links, ChannelPost.fwd_from_username).where(
+                ChannelPost.channel_id.is_not(None)))).all():
+            for ref in extract_refs("\n".join([body or "", *(links or [])])):
+                add(ref, cid, "mention")
+            if fwd_user:
+                add(Ref(username=fwd_user), cid, "forward")
+        return n
+
+    async def _forwards(self, jobs: list[int], stats) -> None:
+        """Channels the sources' messages and the collected posts were forwarded from (ids already known)."""
+        async with SessionLocal() as db:
+            pairs = set(map(tuple, await sql(db, "SELECT DISTINCT fwd_from, sender_id FROM comments "
+                                                 "WHERE job_id IN :jobs AND fwd_from IS NOT NULL", jobs)))
+            pairs |= set(map(tuple, (await db.execute(text(
+                "SELECT DISTINCT fwd_from, channel_id FROM channel_posts WHERE fwd_from IS NOT NULL AND channel_id IS NOT NULL"))).all()))
+            pairs = {(f, p) for f, p in pairs if f != p}
+            ids = list({f for f, _ in pairs})
+            peers = {p.id: p for p in (await db.execute(select(TgPeer).where(TgPeer.id.in_(ids or [0])))).scalars()}
+            found = [{"key": str(f), "peer_id": f, "title": getattr(peers.get(f), "title", None),
+                      "username": getattr(peers.get(f), "username", None), "photo_id": getattr(peers.get(f), "photo_id", None)}
+                     for f in ids]
+            self.new_keys |= await upsert_found(db, found)
+            await add_links(db, {(str(f), p, "forward") for f, p in pairs})
+            await db.commit()
+        stats["forwards"] = len(ids)
+
+    async def _similar(self, ctx, client, stats) -> None:
+        """Telegram's own "similar channels" for each source channel."""
+        async with SessionLocal() as db:
+            channels = [s["id"] for s in await list_sources(db) if s["family"] == "channel"]
+            hashes = dict((await db.execute(select(PeerAccess.peer_id, PeerAccess.access_hash).where(
+                PeerAccess.account_id == ctx.account_id, PeerAccess.peer_id.in_(channels or [0])))).all())
+        await ctx.update(force=True, phase="similar", similar_total=len(channels), similar_done=0)
+        for i, cid in enumerate(channels, 1):
+            bare = utils.resolve_id(cid)[0]
+            try:
+                peer = types.InputChannel(bare, hashes[cid]) if cid in hashes else await client.get_input_entity(types.PeerChannel(bare))
+                res = await self._call("similar", lambda p=peer: client(functions.channels.GetChannelRecommendationsRequest(channel=p)))
+            except Blocked:
+                break
+            except (ValueError, TypeError, errors.RPCError):
+                continue
+            chats = [c for c in res.chats if isinstance(c, types.Channel)]
+            async with SessionLocal() as db:
+                await _save_peer_rows(db, chats)
+                self.new_keys |= await upsert_found(db, [found_row(c) for c in chats])
+                await add_links(db, {(str(utils.get_peer_id(c)), cid, "similar") for c in chats})
+                await db.commit()
+            for c in chats:
+                self.entities[utils.get_peer_id(c)] = c
+            stats["similar"] += len(chats)
+            await ctx.update(similar_done=i)
 
     async def _lookup(self, ctx, client, ref: Ref, known, found: list) -> tuple[str, int | None]:
         if known is not None:  # (kind, id) of a peer already in tg_peers
@@ -436,7 +534,7 @@ class ChannelFinder(Tool):
         found.append(found_row(chat))
         return _chat_kind(chat), utils.get_peer_id(chat)
 
-    async def _link_bio(self, by_ref: dict[str, tuple[Ref, set[int]]]) -> None:
+    async def _link_refs(self, by_ref: dict[str, tuple[Ref, set[tuple[int, str]]]]) -> None:
         async with SessionLocal() as db:
             cache = {r.username: r for r in (await db.execute(select(UsernameLookup).where(
                 UsernameLookup.username.in_(list(by_ref) or [""])))).scalars()}
@@ -446,7 +544,7 @@ class ChannelFinder(Tool):
                 if hit is None or hit.kind in ("user", "none"):
                     continue
                 fkey = f"+{ref.invite}" if hit.kind == "invite" else str(hit.peer_id)
-                links |= {(fkey, u, "bio") for u in users}
+                links |= {(fkey, p, via) for p, via in users if str(p) != fkey}
             present = set((await db.execute(select(FoundChannel.key).where(
                 FoundChannel.key.in_(list({k for k, _, _ in links}) or [""])))).scalars())
             await add_links(db, {link for link in links if link[0] in present})
@@ -506,11 +604,7 @@ class ChannelFinder(Tool):
 
 
 async def _save_peer_rows(db, entities: list[Any]) -> None:
-    rows = [peer_row(e) for e in entities if isinstance(e, (types.User, types.Channel, types.Chat))]
-    for r in rows:
-        stmt = sqlite_insert(TgPeer).values(r)
-        await db.execute(stmt.on_conflict_do_update(
-            index_elements=["id"], set_={c: stmt.excluded[c] for c in r if c != "id"} | {"updated_at": utcnow()}))
+    await upsert_peers(db, entities)
     await save_access(db, entities)
 
 

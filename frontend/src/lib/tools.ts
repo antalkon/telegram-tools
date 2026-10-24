@@ -1,4 +1,4 @@
-import { BarChart3, BellRing, GitCompareArrows, MessagesSquare, Network, Send, TextSearch, UserSearch, Users, type LucideIcon } from 'lucide-react'
+import { BarChart3, BellRing, GitCompareArrows, Globe, MessagesSquare, Network, Newspaper, Radar, Send, TextSearch, UserSearch, Users, type LucideIcon } from 'lucide-react'
 
 export interface ToolDef {
   id: string
@@ -23,6 +23,27 @@ export const TOOLS: ToolDef[] = [
     description: 'Группы, супергруппы и форумы: вся история сообщений и список участников, если он открыт.',
     icon: Users,
     path: '/tools/chat-indexer',
+  },
+  {
+    id: 'channel-posts',
+    title: 'Посты каналов',
+    description: 'Посты с просмотрами, репостами и рекламой (erid, ИНН рекламодателя) — через аккаунт или без него, через t.me/s.',
+    icon: Newspaper,
+    path: '/tools/channel-posts',
+  },
+  {
+    id: 'channel-finder',
+    title: 'Каналы пользователей',
+    description: 'Каналы из профилей и bio, откуда репостят, кого упоминают и похожие каналы — кандидаты в источники.',
+    icon: Radar,
+    path: '/users/channels',
+  },
+  {
+    id: 'username-check',
+    title: 'Username на других сайтах',
+    description: 'Есть ли такой же @username на ~600 публичных сайтах (база WhatsMyName). Запускается из профиля человека.',
+    icon: Globe,
+    path: '/users',
   },
   {
     id: 'search',

@@ -361,10 +361,80 @@ export interface PeopleSearchResult {
   items: (PeerCard & { matches: { file_id: number | null; filename: string | null; snippet: string }[] })[]
 }
 
+export type ContactKind = 'phones' | 'emails' | 'sites' | 'inn' | 'ogrn' | 'wallet_ton' | 'wallet_eth' | 'wallet_tron' | 'wallet_btc'
+export interface Org {
+  name: string | null
+  short_name: string | null
+  inn: string | null
+  ogrn: string | null
+  kpp: string | null
+  kind: 'ЮЛ' | 'ИП'
+  registered: string | null
+  closed: string | null
+  head: string | null
+  region: string | null
+  url: string
+}
+export interface ContactItem {
+  value: string
+  count: number
+  refs: { kind: 'bio' | 'about' | 'message' | 'post'; link?: string | null; source?: string | null; post_id?: number }[]
+  org?: Org | null
+}
+export type Contacts = Partial<Record<ContactKind, ContactItem[]>>
+export interface HistoryItem { field: string; old: string | null; new: string | null; changed_at: string }
+export interface AccountAge { kind: 'approx' | 'before' | 'after'; date: string; not_later_than?: string }
+export interface UsernameSites { username: string; checked: number; checked_at: string | null; found: { site: string; category: string | null; url: string }[] }
+export interface ChannelPost {
+  channel_key: string
+  channel_id: number | null
+  username: string | null
+  post_id: number
+  date: string | null
+  text: string | null
+  views: number | null
+  forwards: number | null
+  replies: number | null
+  media: boolean
+  links: string[]
+  via: 'account' | 'web'
+  forwarded_from: { id: number | null; name: string | null; username: string | null } | null
+  ad: { erid: string | null; advertiser: string | null; inn: string | null } | null
+  link: string | null
+}
+export interface PostChannel {
+  key: string
+  channel_id: number | null
+  username: string | null
+  title: string
+  posts: number
+  ads: number
+  collected_at: string | null
+  newest: string | null
+  oldest: string | null
+  avg_views: number | null
+  via: ('account' | 'web')[]
+}
+export interface Advertiser {
+  inn: string | null
+  advertiser: string | null
+  posts: number
+  channels: number
+  last_at: string | null
+  channel_keys: string[]
+  org: Org | null
+}
+
 export interface UserProfile {
   peer: PeerCard
   note: string | null
   dossier: Dossier
+  /** E.164 numbers found in the bio */
+  bio_phones: string[]
+  account_age: AccountAge | null
+  /** channels and groups the account is not in: their creation date */
+  created_at: string | null
+  history: HistoryItem[]
   about: string | null
   profile_checked_at: string | null
   channels: ProfileChannel[]
@@ -547,7 +617,7 @@ export interface FoundChannel {
   found_at: string | null
   checked_at: string | null
   is_source: boolean
-  via: { personal: number; bio: number; sender: boolean }
+  via: { personal: number; bio: number; forward: number; mention: number; similar: number; sender: boolean }
   users: number
   people: PeerCard[]
 }
@@ -567,10 +637,14 @@ export interface FinderOptions {
   resolve_mentions?: boolean
   include_senders?: boolean
   use_usernames?: boolean
+  from_forwards?: boolean
+  from_mentions?: boolean
+  mentions_limit?: number
+  similar_channels?: boolean
 }
 
 export interface FinderProgress {
-  phase?: 'queued' | 'starting' | 'select' | 'profiles' | 'resolve' | 'details' | 'avatars' | JobStatus
+  phase?: 'queued' | 'starting' | 'select' | 'profiles' | 'resolve' | 'similar' | 'details' | 'avatars' | JobStatus
   users_total?: number
   users_done?: number
   found?: number
@@ -597,6 +671,9 @@ export interface FinderResult {
   deferred: number
   details: number
   new_channels: number
+  forwards?: number
+  mentions?: number
+  similar?: number
   found_total: number
   postponed_sec: number | null
   blocked?: Partial<Record<FinderBlock, string>>

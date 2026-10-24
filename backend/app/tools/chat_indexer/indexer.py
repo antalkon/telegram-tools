@@ -25,7 +25,8 @@ from app.telegram.links import LinkError, parse_channel_link
 from app.telegram.peers import download_avatar
 from app.telegram.resolve import UserFacingError, full_info, resolve_chat, source_type
 from app.tools.base import register
-from app.tools.comment_collector.collector import AVATAR_TIMEOUT, BATCH, CommentCollector
+from app.tools.comment_collector.aggregate import forwarded_from
+from app.tools.comment_collector.collector import AVATAR_TIMEOUT, BATCH, CommentCollector, keep_forward_source, save_about
 
 TOOL_ID = "chat-indexer"
 MEMBERS_LIMIT = 50_000  # Telegram itself stops listing big groups at ~10k
@@ -75,7 +76,7 @@ def message_record(msg: Any, forum: bool) -> dict[str, Any] | None:
     else:
         thread = day_number(msg.date)
     return {"msg_id": msg.id, "post_id": thread, "sender_id": utils.get_peer_id(msg.from_id),
-            "date": msg.date, "text": msg.message or None, "reply_to": reply_to}
+            "date": msg.date, "text": msg.message or None, "reply_to": reply_to, "fwd_from": forwarded_from(msg)}
 
 
 def member_role(user: Any) -> str | None:
@@ -137,6 +138,7 @@ class ChatIndexer(CommentCollector):
         fc = full.full_chat
         forum = kind == "forum"
         await self._save_peers([entity])
+        await save_about(utils.get_peer_id(entity), getattr(fc, "about", None))
         if params.download_avatars:
             try:
                 await asyncio.wait_for(download_avatar(client, entity), AVATAR_TIMEOUT)
@@ -269,6 +271,7 @@ class ChatIndexer(CommentCollector):
                     authors[rec["sender_id"]] = authors.get(rec["sender_id"], 0) + 1
                     if msg.sender is not None:
                         entities[rec["sender_id"]] = msg.sender
+                    keep_forward_source(msg, entities)
                     if state["scanned"] % 500 == 0:
                         await flush()
                         await ctx.update(messages_scanned=state["scanned"], comments=state["scanned"],

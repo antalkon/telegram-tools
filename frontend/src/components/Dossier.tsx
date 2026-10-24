@@ -29,7 +29,31 @@ function useRefresh(peerId: number) {
 }
 
 /** Hand-entered details about the person; searchable from the people list and the search page. */
-export function DossierCard({ peerId, dossier }: { peerId: number; dossier: Dossier }) {
+/** Phones Telegram itself gave: the profile phone (when visible) and numbers written in the bio. */
+function TelegramPhones({ tgPhone, bioPhones, copy }: { tgPhone: string | null; bioPhones: string[]; copy: (v: string) => void }) {
+  const items = [...(tgPhone ? [{ v: tgPhone, label: 'в профиле Telegram' }] : []),
+    ...bioPhones.filter((v) => v !== tgPhone).map((v) => ({ v, label: 'в bio' }))]
+  if (!items.length) return null
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-line px-5 py-3">
+      <span className="text-[11.5px] text-fg-subtle">Телефоны из Telegram — собраны автоматически</span>
+      <ul className="flex flex-wrap gap-x-5 gap-y-1">
+        {items.map(({ v, label }) => (
+          <li key={v} className="group flex items-center gap-1.5 text-[13.5px]">
+            <a href={`tel:${v}`} className="font-mono hover:text-accent">{v}</a>
+            <span className="text-[12px] text-fg-subtle">{label}</span>
+            <button onClick={() => copy(v)} aria-label={`Скопировать ${v}`}
+              className="rounded p-1 text-fg-subtle opacity-60 transition-opacity hover:text-fg group-hover:opacity-100 focus-visible:opacity-100">
+              <Copy className="size-3" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+export function DossierCard({ peerId, dossier, tgPhone = null, bioPhones = [] }: { peerId: number; dossier: Dossier; tgPhone?: string | null; bioPhones?: string[] }) {
   const toast = useToast()
   const refresh = useRefresh(peerId)
   const empty = DOSSIER_FIELDS.every((f) => !dossier[f])
@@ -114,6 +138,7 @@ export function DossierCard({ peerId, dossier }: { peerId: number; dossier: Doss
           {dossier.updated_at && <p className="text-[11.5px] text-fg-subtle sm:col-span-2">Изменено {dateTime(dossier.updated_at)}</p>}
         </dl>
       )}
+      <TelegramPhones tgPhone={tgPhone} bioPhones={bioPhones} copy={copy} />
     </Card>
   )
 }

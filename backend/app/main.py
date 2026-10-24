@@ -8,14 +8,17 @@ from fastapi.staticfiles import StaticFiles
 from starlette.routing import Route
 
 import app.tools.channel_finder.finder  # noqa: F401  (registers the tool)
+import app.tools.channel_posts.posts  # noqa: F401  (registers the tool)
 import app.tools.chat_indexer.indexer  # noqa: F401  (registers the tool)
 import app.tools.comment_collector.collector  # noqa: F401  (registers the tool)
-from app.api import accounts, auth, comment_collector, discovery, insights, jobs, monitoring, sources, tokens
+import app.tools.username_check.check  # noqa: F401  (registers the tool)
+from app.api import accounts, auth, comment_collector, discovery, insights, jobs, monitoring, posts, sources, tokens
 from app.config import get_settings
 from app.db import init_db
 from app.jobs.runner import runner
 from app.jobs.scheduler import scheduler
 from app.mcp_server import http_app as mcp_http_app, mcp
+from app.telegram.contacts import backfill_bio_phones
 from app.security import COOKIE_NAME, require_admin, verify_token
 from app.telegram.manager import manager
 from app.telegram.peers import avatar_path
@@ -34,6 +37,7 @@ async def lifespan(_app: FastAPI):
     if s.admin_password == "admin" or s.secret_key.startswith("change-me"):
         logging.warning("Default TGT_ADMIN_PASSWORD / TGT_SECRET_KEY in use — set them in .env before exposing the panel")
     await init_db()
+    await backfill_bio_phones()
     await runner.recover()
     if s.scheduler_enabled:
         scheduler.start()
@@ -58,7 +62,7 @@ app = FastAPI(title="TG Toolkit API", version=VERSION, lifespan=lifespan, docs_u
 
 for r in (auth.router, accounts.router, jobs.router, comment_collector.router, comment_collector.jobs_router,
           comment_collector.indexer_router, insights.router, monitoring.router, sources.router, discovery.router,
-          tokens.router):
+          posts.router, tokens.router):
     app.include_router(r, prefix="/api")
 
 # MCP endpoint (POST/GET/DELETE /mcp); token auth happens inside.

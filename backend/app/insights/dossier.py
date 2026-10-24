@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import json
 import logging
 import re
 from pathlib import Path
@@ -11,8 +12,9 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.insights.common import cards
+from app.insights.common import cards, fts_query
 from app.models import PeerDossier, PeerFile, iso
+from app.telegram.contacts import digits_query
 
 log = logging.getLogger(__name__)
 
@@ -138,14 +140,32 @@ async def reindex(db: AsyncSession) -> None:
     await db.commit()
 
 
-async def search_people(db: AsyncSession, match: str, limit: int = 20) -> dict[str, Any]:
-    """People whose details or attached PDFs match, best first, with a snippet per hit."""
-    rows = (await db.execute(text(f"""
-        SELECT peer_id, file_id, snippet(dossier_fts, 0, '{HL_START}', '{HL_END}', '…', 16), bm25(dossier_fts) AS rank
-        FROM dossier_fts WHERE dossier_fts MATCH :m ORDER BY rank LIMIT 500"""), {"m": match})).all()
+async def _phone_hits(db: AsyncSession, digits: str) -> dict[int, list[tuple[int | None, str]]]:
+    """People whose Telegram profile phone or bio phones contain these digits."""
+    rows = (await db.execute(text(
+        "SELECT id, phone, bio_phones FROM tg_peers WHERE replace(phone, '+', '') LIKE :d OR CAST(bio_phones AS TEXT) LIKE :d LIMIT 200"),
+        {"d": f"%{digits}%"})).all()
+    out: dict[int, list[tuple[int | None, str]]] = {}
+    for pid, phone, bio in rows:
+        if phone and digits in phone:
+            out.setdefault(pid, []).append((None, f"телефон в Telegram: {HL_START}{phone}{HL_END}"))
+        for p in json.loads(bio) if isinstance(bio, str) else bio or []:
+            if digits in p:
+                out.setdefault(pid, []).append((None, f"телефон в bio: {HL_START}{p}{HL_END}"))
+    return out
+
+
+async def search_people(db: AsyncSession, q: str, limit: int = 20) -> dict[str, Any]:
+    """People whose details, attached PDFs or Telegram phones match, best first, with a snippet per hit."""
     hits: dict[int, list[tuple[int | None, str]]] = {}
-    for peer_id, file_id, snip, _ in rows:
-        hits.setdefault(peer_id, []).append((file_id, snip))
+    if digits := digits_query(q):
+        hits |= await _phone_hits(db, digits)
+    if match := fts_query(q):
+        rows = (await db.execute(text(f"""
+            SELECT peer_id, file_id, snippet(dossier_fts, 0, '{HL_START}', '{HL_END}', '…', 16), bm25(dossier_fts) AS rank
+            FROM dossier_fts WHERE dossier_fts MATCH :m ORDER BY rank LIMIT 500"""), {"m": match})).all()
+        for peer_id, file_id, snip, _ in rows:
+            hits.setdefault(peer_id, []).append((file_id, snip))
     ids = list(hits)[:limit]
     names = {f.id: f.filename for f in (await db.execute(
         select(PeerFile).where(PeerFile.id.in_([fid for i in ids for fid, _ in hits[i] if fid is not None] or [-1])))).scalars()}

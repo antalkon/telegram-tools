@@ -14,10 +14,10 @@ from app.db import SessionLocal
 from app.jobs.runner import JobContext
 from app import notify
 from app.insights.common import active_jobs, cards, excluded_ids
-from app.models import Comment, Job, JobParticipant, PeerNote, ThreadRoot, TgPeer, iso, utcnow
+from app.models import Comment, Job, JobParticipant, PeerNote, ThreadRoot, iso, utcnow
 from app.telegram.links import ChannelRef, LinkError, parse_channel_link
 from app.telegram.access import save_access
-from app.telegram.peers import avatar_path, download_avatar, mark_missed, peer_row, recently_missed
+from app.telegram.peers import avatar_path, download_avatar, mark_missed, recently_missed, upsert_peers
 from app.tools.base import Tool, register
 from app.tools.comment_collector.aggregate import CommentAggregator
 
@@ -54,6 +54,23 @@ class CollectorInput(BaseModel):
 
 class UserFacingError(Exception):
     pass
+
+
+def keep_forward_source(msg: Any, entities: dict[int, Any]) -> None:
+    """Remember the channel a message was forwarded from, when Telegram sent its entity along
+    (its access hash lets the channel finder read it later)."""
+    if getattr(msg, "fwd_from", None) is None:
+        return
+    chat = getattr(getattr(msg, "forward", None), "chat", None)
+    if isinstance(chat, (types.Channel, types.Chat)):
+        entities[utils.get_peer_id(chat)] = chat
+
+
+async def save_about(peer_id: int, about: str | None) -> None:
+    """A channel's / chat's description (for contacts, ИНН, links in it)."""
+    async with SessionLocal() as db:
+        await db.execute(text("UPDATE tg_peers SET about = :a WHERE id = :p"), {"a": about or None, "p": peer_id})
+        await db.commit()
 
 
 async def _resolve_channel(client: TelegramClient, ref: ChannelRef) -> types.Channel:
@@ -115,6 +132,7 @@ class CommentCollector(Tool):
             raise UserFacingError("У канала не подключены комментарии (нет группы обсуждений)")
 
         await self._save_peers([channel, group])
+        await save_about(utils.get_peer_id(channel), getattr(full.full_chat, "about", None))
         if params.download_avatars:
             try:
                 await asyncio.wait_for(download_avatar(client, channel), AVATAR_TIMEOUT)
@@ -261,6 +279,7 @@ class CommentCollector(Tool):
             # Cache senders of every reply; non-commenters are filtered out before saving.
             if getattr(msg, "reply_to", None) and msg.sender is not None:
                 entities[utils.get_peer_id(msg.sender)] = msg.sender
+            keep_forward_source(msg, entities)
             if scanned % 200 == 0:
                 await self._flush_comments(target, agg)
                 await ctx.update(
@@ -303,6 +322,7 @@ class CommentCollector(Tool):
                     agg.feed_post_comment(msg, post.id)
                     if msg.sender is not None:
                         entities[utils.get_peer_id(msg.sender)] = msg.sender
+                    keep_forward_source(msg, entities)
             if posts_done % 10 == 0 or posts_done == posts_total:
                 await self._flush_comments(target, agg)
                 await ctx.update(
@@ -328,7 +348,7 @@ class CommentCollector(Tool):
     # ---------- persistence ----------
 
     async def _persist(self, job_id: int, agg: CommentAggregator, entities: dict[int, Any]) -> dict[int, Any]:
-        entities = {pid: e for pid, e in entities.items() if pid in agg.participants}
+        entities = {pid: e for pid, e in entities.items() if pid in agg.participants or pid in agg.fwd_sources}
         await self._save_peers(list(entities.values()))
         await self._save_participants(job_id, agg)
         return entities
@@ -366,7 +386,7 @@ class CommentCollector(Tool):
     async def _merge_into_base(self, base: Job, agg: CommentAggregator, entities: dict[int, Any],
                                last_group_id: int) -> tuple[dict[int, Any], dict[str, Any]]:
         """Recount the base job's participants from its (now longer) comment list."""
-        entities = {pid: e for pid, e in entities.items() if pid in agg.participants}
+        entities = {pid: e for pid, e in entities.items() if pid in agg.participants or pid in agg.fwd_sources}
         await self._save_peers(list(entities.values()))
         async with SessionLocal() as db:
             await db.execute(text("DELETE FROM job_participants WHERE job_id = :j"), {"j": base.id})
@@ -396,22 +416,19 @@ class CommentCollector(Tool):
                     sqlite_insert(Comment).on_conflict_do_nothing(),
                     [
                         {"job_id": job_id, "msg_id": r.msg_id, "post_id": r.post_id,
-                         "sender_id": r.sender_id, "date": r.date, "text": r.text, "reply_to": r.reply_to}
+                         "sender_id": r.sender_id, "date": r.date, "text": r.text, "reply_to": r.reply_to,
+                         "fwd_from": r.fwd_from}
                         for r in recs[i:i + BATCH]
                     ],
                 )
             await db.commit()
 
     async def _save_peers(self, entities: list[Any]) -> None:
-        rows = [peer_row(e) for e in entities if e is not None]
-        if not rows:
+        entities = [e for e in entities if e is not None]
+        if not entities:
             return
         async with SessionLocal() as db:
-            for i in range(0, len(rows), BATCH):
-                stmt = sqlite_insert(TgPeer).values(rows[i:i + BATCH])
-                cols = {c: stmt.excluded[c] for c in rows[0] if c != "id"}
-                cols["updated_at"] = datetime.now(UTC)
-                await db.execute(stmt.on_conflict_do_update(index_elements=["id"], set_=cols))
+            await upsert_peers(db, entities)
             await save_access(db, entities)
             await db.commit()
 

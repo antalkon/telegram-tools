@@ -31,7 +31,7 @@ TALK = channel(502, "Talk", "talk_chat", broadcast=False)
 
 BIOS = {
     10: ("Пишу в t.me/blog_one, болтаем в @talk_chat, друг @friend_user, бот @helper_bot", PERSONAL.id),
-    21: ("Связь: @ivan_contact, закрытый канал https://t.me/+INV123", None),
+    21: ("Связь: @ivan_contact, тел. 8 (912) 345-67-89, закрытый канал https://t.me/+INV123", None),
     22: (None, None),
 }
 RESOLVE = {
@@ -141,6 +141,10 @@ async def test_finder_end_to_end(fenv):
     assert ("-1000000000500", 10, "personal") in links and ("-1000000000501", 10, "bio") in links
     assert ("-1000000000502", 10, "bio") in links and ("+INV123", 21, "bio") in links
     assert alice.personal_channel_id == -1000000000500 and "blog_one" in alice.about and alice.profile_checked_at
+    async with SessionLocal() as db:
+        assert (await db.get(TgPeer, 21)).bio_phones == ["+79123456789"]
+        _, hit = await users.list_users(db, search="89123456789")
+        assert [r["peer_id"] for r in hit] == [21]
 
     # second run: every profile already checked, every username cached -> no requests at all
     fenv.client.calls.clear()

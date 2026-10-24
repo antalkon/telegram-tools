@@ -24,6 +24,7 @@ class CommentRec:
     date: datetime
     text: str | None
     reply_to: int | None = None  # comment this one answers (None = answers the post)
+    fwd_from: int | None = None  # channel/chat the message was forwarded from
 
 
 @dataclass
@@ -79,6 +80,13 @@ def sender_peer_id(msg: Any) -> int:
     return utils.get_peer_id(peer)
 
 
+def forwarded_from(msg: Any) -> int | None:
+    """Marked id of the channel or chat a message was forwarded from (None for users and hidden senders)."""
+    fwd = getattr(msg, "fwd_from", None)
+    peer = getattr(fwd, "from_id", None) if fwd else None
+    return utils.get_peer_id(peer) if isinstance(peer, (types.PeerChannel, types.PeerChat)) else None
+
+
 def _text(msg: Any) -> str | None:
     text = getattr(msg, "message", None)
     return text[:TEXT_LIMIT] if text else None
@@ -94,6 +102,7 @@ class CommentAggregator:
         self.total = 0
         self._new: list[CommentRec] = []
         self._seen: set[int] = set()
+        self.fwd_sources: set[int] = set()  # channels comments were forwarded from (their entities are kept)
 
     # --- group-history strategy: feed every message of the discussion group ---
 
@@ -128,7 +137,10 @@ class CommentAggregator:
         self.participants.setdefault(sender, ParticipantStats()).add(post_id, msg.date)
         self.posts_with_comments.add(post_id)
         self.total += 1
-        self._new.append(CommentRec(msg.id, post_id, sender, msg.date, _text(msg), reply_target(msg)))
+        fwd = forwarded_from(msg)
+        if fwd is not None:
+            self.fwd_sources.add(fwd)
+        self._new.append(CommentRec(msg.id, post_id, sender, msg.date, _text(msg), reply_target(msg), fwd))
 
     def drain_new(self) -> list[CommentRec]:
         """Comments recorded since the previous call (for batched DB inserts)."""

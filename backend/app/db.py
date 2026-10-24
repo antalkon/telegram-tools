@@ -48,6 +48,9 @@ _ADDED_COLUMNS = [
     ("tg_peers", "about", "TEXT"),
     ("tg_peers", "personal_channel_id", "BIGINT"),
     ("tg_peers", "profile_checked_at", "DATETIME"),
+    ("tg_peers", "bio_phones", "JSON NOT NULL DEFAULT '[]'"),
+    ("tg_peers", "tg_created_at", "DATETIME"),
+    ("comments", "fwd_from", "BIGINT"),
 ]
 
 # Full-text index over message/comment texts (external content: the text lives in `comments`).
@@ -96,6 +99,8 @@ async def init_db() -> None:
                 await conn.exec_driver_sql(ddl)
             await conn.exec_driver_sql("INSERT INTO comments_fts(comments_fts) VALUES ('rebuild')")
         await conn.exec_driver_sql(_DOSSIER_FTS)
+        # Telegram profile phones were stored as bare digits before; now +digits
+        await conn.exec_driver_sql("UPDATE tg_peers SET phone = '+' || phone WHERE phone IS NOT NULL AND phone NOT LIKE '+%'")
         # Backfill source ids for jobs finished before the column existed.
         await conn.exec_driver_sql(
             "UPDATE jobs SET source_id = COALESCE(json_extract(result, '$.channel.id'), json_extract(progress, '$.channel.id')) "

@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import {
-  AtSign, ChevronDown, Clock, ExternalLink, Eye, EyeOff, Layers, Lock, Megaphone, Play, Plus, Radar, Search, Square, UserRound, Users as UsersIcon,
+  AtSign, ChevronDown, Clock, ExternalLink, Eye, EyeOff, Layers, Lock, Megaphone, Play, Plus, Radar, Search, Square, UserRound, Users as UsersIcon, Repeat2, Sparkles,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -74,7 +74,7 @@ function FinderCard({ stats }: { stats?: DiscoveryStats }) {
   const sources = useSources()
   const [accountId, setAccountId] = useState<number | null>(null)
   const [open, setOpen] = useState(false)
-  const [opts, setOpts] = useState<FinderOptions>({ presence: 'all', limit: 2000, check_bio: true, resolve_mentions: true, use_usernames: true, recheck: false })
+  const [opts, setOpts] = useState<FinderOptions>({ presence: 'all', limit: 2000, check_bio: true, resolve_mentions: true, use_usernames: true, recheck: false, from_forwards: true, from_mentions: true, mentions_limit: 100, similar_channels: true })
   const [sourceId, setSourceId] = useState('')
   const account = accountId ?? defaultAccount(accounts.data)
   const set = (patch: FinderOptions) => setOpts((o) => ({ ...o, ...patch }))
@@ -146,6 +146,19 @@ function FinderCard({ stats }: { stats?: DiscoveryStats }) {
                     description="Если к человеку нет сохранённого доступа. Медленнее и тратит лимит Telegram на поиск имён" />
                   <Switch checked={opts.recheck ?? false} onChange={(v) => set({ recheck: v })} label="Перепроверить"
                     description="Заново прочитать уже проверенные профили — bio и каналы могли поменяться" />
+                  <Switch checked={opts.from_forwards ?? true} onChange={(v) => set({ from_forwards: v })} label="Откуда репостят"
+                    description="Каналы, из которых пересылали сообщения в источниках и посты собранных каналов. Без запросов к Telegram" />
+                  <Switch checked={opts.similar_channels ?? true} onChange={(v) => set({ similar_channels: v })} label="Похожие каналы"
+                    description="Рекомендации Telegram «похожие каналы» для каждого канала-источника. Один запрос на канал" />
+                  <div className="flex flex-col gap-2">
+                    <Switch checked={opts.from_mentions ?? true} onChange={(v) => set({ from_mentions: v })} label="Упоминания в сообщениях"
+                      description="@каналы и t.me-ссылки из сообщений и постов. Каждый новый username — запрос к лимитированному поиску имён" />
+                    {opts.from_mentions !== false && (
+                      <Input type="number" min={0} max={5000} step={50} aria-label="Сколько новых упоминаний проверять за запуск" value={opts.mentions_limit ?? ''}
+                        onChange={(e) => set({ mentions_limit: Number(e.target.value) || 0 })} className="w-56"
+                        trailing={<span className="text-[12px] text-fg-subtle">новых за запуск</span>} />
+                    )}
+                  </div>
                 </div>
               )}
               <div className="flex flex-wrap items-center gap-3">
@@ -199,14 +212,15 @@ function LastRun({ job }: { job: Job }) {
   const waiting = r.waiting_username ?? 0
   if (waiting) hints.push(`${num(waiting)} ${pluralRu(waiting, 'профиль', 'профиля', 'профилей')} ждут снятия запрета на поиск по @username`)
   const lost = (r.no_access ?? 0) - waiting
-  const STEP: Record<string, string> = { profiles: 'чтение профилей', resolve: 'проверка ссылок из bio', details: 'сведения о каналах' }
+  const STEP: Record<string, string> = { profiles: 'чтение профилей', resolve: 'проверка ссылок и упоминаний', details: 'сведения о каналах', forwards: 'репосты', similar: 'похожие каналы' }
   for (const [k, v] of Object.entries(r.failures ?? {})) hints.push(`Шаг «${STEP[k] ?? k}» прервался: ${v}. Остальные шаги выполнены`)
   if (lost > 0) hints.push(`${num(lost)} ${pluralRu(lost, 'профиль', 'профиля', 'профилей')} без доступа и без @username: переиндексируйте их источники — Telegram выдаст доступ заново`)
   return (
     <div className="flex flex-col gap-1 text-[13px] text-fg-muted">
       <p>
         {job.status === 'cancelled' ? 'Остановлен' : 'Готово'} {relative(job.finished_at)}: проверено {num(r.checked ?? 0)} из {num(r.users_total)},
-        личных каналов {num(r.personal ?? 0)}, ссылок проверено {num(r.resolved ?? 0)}, новых каналов <b className="text-fg">{num(r.new_channels ?? 0)}</b>.
+        личных каналов {num(r.personal ?? 0)}, ссылок проверено {num(r.resolved ?? 0)}
+        {r.forwards ? `, источников репостов ${num(r.forwards)}` : ''}{r.similar ? `, похожих ${num(r.similar)}` : ''}, новых каналов <b className="text-fg">{num(r.new_channels ?? 0)}</b>.
       </p>
       {hints.map((h) => <p key={h} className="text-[12.5px] text-warning">{h}</p>)}
     </div>
@@ -221,8 +235,15 @@ function ViaBadges({ c }: { c: FoundChannel }) {
       {c.via.personal > 0 && <Badge tone="accent" title="Канал закреплён в профиле"><UserRound className="size-3" aria-hidden />в профиле{c.via.personal > 1 ? ` ×${c.via.personal}` : ''}</Badge>}
       {c.via.bio > 0 && <Badge title="Ссылка или @упоминание в bio"><AtSign className="size-3" aria-hidden />в bio{c.via.bio > 1 ? ` ×${c.via.bio}` : ''}</Badge>}
       {c.via.sender && <Badge title="Писал в источниках от имени канала"><Megaphone className="size-3" aria-hidden />писал как канал</Badge>}
+      {c.via.forward > 0 && <Badge title="Из него пересылали сообщения или посты"><Repeat2 className="size-3" aria-hidden />репосты{c.via.forward > 1 ? ` ×${c.via.forward}` : ''}</Badge>}
+      {c.via.mention > 0 && <Badge title="Упоминали в сообщениях или постах"><AtSign className="size-3" aria-hidden />упоминания{c.via.mention > 1 ? ` ×${c.via.mention}` : ''}</Badge>}
+      {c.via.similar > 0 && <Badge tone="accent" title="Telegram рекомендует как похожий на канал-источник"><Sparkles className="size-3" aria-hidden />похожий</Badge>}
     </span>
   )
+}
+
+const VIA_LABEL: Record<string, string> = {
+  personal: 'канал в профиле', bio: 'упомянут в bio', forward: 'репостили', mention: 'упоминали', similar: 'похож на источник',
 }
 
 function People({ c }: { c: FoundChannel }) {
@@ -247,7 +268,7 @@ function People({ c }: { c: FoundChannel }) {
       {open && (
         <div className="mt-2 grid gap-2 rounded-lg border border-line bg-surface p-3 sm:grid-cols-2">
           {(all.data ?? c.people.map((p) => ({ ...p, via: [] }))).map((p) => (
-            <PeerLine key={p.peer_id} p={p} size={28} sub={p.via.includes('personal') ? 'канал в профиле' : p.via.includes('bio') ? 'упомянут в bio' : undefined} />
+            <PeerLine key={p.peer_id} p={p} size={28} sub={VIA_LABEL[p.via.find((v) => v in VIA_LABEL) ?? '']} />
           ))}
         </div>
       )}
@@ -301,7 +322,7 @@ export default function FoundChannels() {
   const [params, setParams] = useSearchParams()
   const status = (params.get('status') ?? 'new') as 'new' | 'sources' | 'dismissed' | 'all'
   const type = (params.get('type') ?? 'all') as 'all' | 'channel' | 'chat' | 'private'
-  const via = (params.get('via') ?? 'all') as 'all' | 'personal' | 'bio' | 'sender'
+  const via = (params.get('via') ?? 'all') as 'all' | 'personal' | 'bio' | 'sender' | 'forward' | 'mention' | 'similar'
   const sort = params.get('sort') ?? 'users'
   const set = (k: string, v: string, dflt: string) => setParams((p) => (v === dflt ? p.delete(k) : p.set(k, v), p), { replace: true })
   const [search, setSearch] = useState('')
@@ -351,7 +372,7 @@ export default function FoundChannels() {
       <PageHeader
         icon={<Radar className="size-5" />}
         title="Каналы пользователей"
-        description="Каналы и чаты, которые люди из базы держат в профиле или упоминают в bio — кандидаты на индексацию"
+        description="Каналы и чаты из профилей и bio людей, репостов, упоминаний в сообщениях и похожие на источники — кандидаты на индексацию"
         actions={<UsersTabs />}
       />
       <div className="flex flex-col gap-5">
@@ -378,6 +399,9 @@ export default function FoundChannels() {
                 <option value="all">Откуда угодно</option>
                 <option value="personal">Канал в профиле</option>
                 <option value="bio">Ссылка в bio</option>
+                <option value="forward">Откуда репостят</option>
+                <option value="mention">Упоминания в сообщениях</option>
+                <option value="similar">Похожие каналы</option>
                 <option value="sender">Писали от имени канала</option>
               </select>
               <select aria-label="Сортировка" value={sort} onChange={(e) => set('sort', e.target.value, 'users')}

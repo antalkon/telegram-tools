@@ -14,6 +14,7 @@ import Users from './pages/Users'
 import FoundChannels from './pages/FoundChannels'
 import CommentCollector from './pages/CommentCollector'
 import ChatIndexer from './pages/ChatIndexer'
+import ChannelPosts from './pages/ChannelPosts'
 import Search from './pages/Search'
 import Home from './pages/Home'
 import Jobs from './pages/Jobs'
@@ -69,6 +70,7 @@ export default function App() {
         <Route path="tools/comment-collector/jobs/:jobId" element={<CommentCollector />} />
         <Route path="tools/chat-indexer" element={<ChatIndexer />} />
         <Route path="tools/chat-indexer/jobs/:jobId" element={<ChatIndexer />} />
+        <Route path="tools/channel-posts" element={<ChannelPosts />} />
         <Route path="search" element={<Search />} />
         <Route path="sources" element={<Navigate to="/channels" replace />} />
         <Route path="users" element={<Users />} />

@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { InteractiveGraph } from '../components/InteractiveGraph'
 import { useSources } from '../components/PeerBits'
 import { Card, EmptyState, Segmented, Skeleton } from '../components/ui'
+import { ExportMenu, GRAPH_FORMATS } from '../components/PeerBits'
 import { Page, PageHeader } from '../layout/AppLayout'
 import { api, type GraphData } from '../lib/api'
 import { num } from '../lib/format'
@@ -30,6 +31,8 @@ export default function GraphPage() {
         icon={<Network className="size-5" />}
         title="Граф связей"
         description={mode === 'people' ? 'Каналы, чаты и люди, которые есть сразу в нескольких из них' : 'Источники, связанные общей аудиторией'}
+        actions={<ExportMenu label="Экспорт графа" formats={GRAPH_FORMATS}
+          href={(fmt) => `/api/graph?mode=${mode}&min_sources=${min}&limit=${limit}&family=${family}&active_only=${active === '1'}&format=${fmt}`} />}
       />
       <Card className="mb-4 flex flex-wrap items-center gap-3 p-4">
         <Segmented label="Режим" value={mode} onChange={(v) => set('mode', v)} options={[{ value: 'people', label: 'Люди ↔ источники' }, { value: 'sources', label: 'Источник ↔ источник' }]} />
