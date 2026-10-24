@@ -7,6 +7,7 @@ import { TypeIcon } from '../components/SourceBits'
 import { useState, type KeyboardEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Avatar } from '../components/Avatar'
+import { DossierCard, FilesCard } from '../components/Dossier'
 import { BarList, Heatmap, TimeBars } from '../components/charts'
 import { InteractiveGraph } from '../components/InteractiveGraph'
 import { Flags, PeerLine, Stat, pct } from '../components/PeerBits'
@@ -247,7 +248,7 @@ export default function UserProfile() {
         <Card><EmptyState icon={<Hash className="size-5" />} title="Пользователь не найден" description={profile.error?.message} /></Card>
       </Page>
     )
-  const { peer: p, totals, sources, signals, note, about, channels } = profile.data
+  const { peer: p, totals, sources, signals, note, about, channels, dossier } = profile.data
   const copy = (v: string) => navigator.clipboard.writeText(v).then(() => toast(`Скопировано: ${v}`, 'success'))
 
   return (
@@ -291,6 +292,11 @@ export default function UserProfile() {
           </div>
         </div>
       </Card>
+
+      <div className="mb-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <DossierCard key={`d${p.peer_id}`} peerId={p.peer_id} dossier={dossier} />
+        <FilesCard peerId={p.peer_id} files={dossier.files} />
+      </div>
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat icon={<MessageCircle className="size-3.5" />} label="Сообщений" value={num(totals.comments)} sub="комментарии + чаты" />

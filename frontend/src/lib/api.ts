@@ -335,9 +335,26 @@ export interface ProfileChannel {
   link: string | null
 }
 
+export const DOSSIER_FIELDS = ['full_name', 'email', 'phone', 'country', 'city', 'address', 'passport'] as const
+export type DossierField = (typeof DOSSIER_FIELDS)[number]
+export interface DossierFile {
+  id: number
+  filename: string
+  size: number
+  pages: number | null
+  has_text: boolean
+  created_at: string
+}
+export type Dossier = Record<DossierField, string | null> & { updated_at: string | null; files: DossierFile[] }
+export interface PeopleSearchResult {
+  total: number
+  items: (PeerCard & { matches: { file_id: number | null; filename: string | null; snippet: string }[] })[]
+}
+
 export interface UserProfile {
   peer: PeerCard
   note: string | null
+  dossier: Dossier
   about: string | null
   profile_checked_at: string | null
   channels: ProfileChannel[]

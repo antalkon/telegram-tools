@@ -1,38 +1,16 @@
 """Full-text search over every indexed message and comment (SQLite FTS5)."""
 
-import re
 from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.insights.common import active_jobs, cards, exclusion_opts, sql
+from app.insights.common import active_jobs, cards, exclusion_opts, fts_query, sql
 from app.insights.sources import list_sources, message_link, thread_label
 from app.models import iso
 from app.insights.users import _dt
 
 HL_START, HL_END = "\x02", "\x03"  # highlight markers, split on the client (no HTML in the API)
-
-
-def fts_query(raw: str) -> str | None:
-    """User syntax -> FTS5: words match by prefix, "quoted phrases" exactly, -word excludes."""
-    phrases = re.findall(r'"([^"]+)"', raw)
-    rest = re.sub(r'"[^"]*"', " ", raw)
-    must, never = [], []
-    for p in phrases:
-        words = re.findall(r"\w+", p)
-        if words:
-            must.append('"' + " ".join(words) + '"')
-    for tok in rest.split():
-        neg = tok.startswith("-") and len(tok) > 1
-        for w in re.findall(r"\w+", tok):
-            (never if neg else must).append(f'"{w}"*')
-    if not must:
-        return None
-    q = " AND ".join(must)
-    for n in never:
-        q += f" NOT {n}"
-    return q
 
 
 def _excluded_sql(opts: dict[str, bool]) -> str:

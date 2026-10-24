@@ -26,10 +26,15 @@ class Settings(BaseSettings):
     def avatars_dir(self) -> Path:
         return self.data_dir / "avatars"
 
+    @property
+    def files_dir(self) -> Path:
+        return self.data_dir / "files"
+
 
 @lru_cache
 def get_settings() -> Settings:
     s = Settings()
     s.data_dir.mkdir(parents=True, exist_ok=True)
     s.avatars_dir.mkdir(parents=True, exist_ok=True)
+    s.files_dir.mkdir(parents=True, exist_ok=True)
     return s

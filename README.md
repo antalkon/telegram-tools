@@ -10,7 +10,7 @@ graph, and discovery of the channels and chats owned by the people in your datab
 [![Docker image](https://img.shields.io/badge/ghcr.io-antalkon%2Ftelegram--tools-2AABEE?logo=docker&logoColor=white)](https://github.com/antalkon/telegram-tools/pkgs/container/telegram-tools)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-[Русский](README.md)
+[Русский](README.ru.md)
 
 </div>
 
@@ -38,6 +38,9 @@ machine: one container and one SQLite file, with no cloud services. The UI is in
   - re-index with different options;
   - monitor on a schedule, with notifications in the panel and in Telegram.
 - **Full-text search** (SQLite FTS5) with phrases, exclusions, filters, context and top authors.
+  It also finds people by their profile metadata and by the text of PDFs attached to them.
+- **Profile metadata and documents.** Add a full name, email, phone, country, city, address and passport
+  number to anyone in the database by hand, and attach PDF files. All of it is searchable.
 - **Analytics:**
   - user dossiers with an activity heatmap, a relationship graph and a suspicion score;
   - per-channel dynamics;

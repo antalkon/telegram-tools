@@ -198,6 +198,36 @@ class PeerNote(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class PeerDossier(Base):
+    """Details about a person entered by hand in their profile (not from Telegram)."""
+
+    __tablename__ = "peer_dossiers"
+
+    peer_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    full_name: Mapped[str | None] = mapped_column(String(255))
+    email: Mapped[str | None] = mapped_column(String(255))
+    phone: Mapped[str | None] = mapped_column(String(64))
+    country: Mapped[str | None] = mapped_column(String(128))
+    city: Mapped[str | None] = mapped_column(String(128))
+    address: Mapped[str | None] = mapped_column(String(255))  # street, house, flat
+    passport: Mapped[str | None] = mapped_column(String(64))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class PeerFile(Base):
+    """PDF attached to a person's profile; the file lives in data/files/<id>.pdf, its text is indexed for search."""
+
+    __tablename__ = "peer_files"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    peer_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    size: Mapped[int] = mapped_column(Integer)
+    pages: Mapped[int | None] = mapped_column(Integer)
+    text: Mapped[str | None] = mapped_column(Text)  # extracted text layer; None for scans
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class ThreadRoot(Base):
     """Discussion-group message that starts the comment thread of a channel post.
     Remembered so incremental runs can attribute new comments on old posts."""

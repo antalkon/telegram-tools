@@ -4,10 +4,11 @@ from collections import Counter
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Integer, cast, func, or_, select, text
+from sqlalchemy import BigInteger, Integer, cast, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.insights.common import active_jobs, cards, exclusion_opts, excluded_ids, excluded_select, peer_card, sql
+from app.insights import dossier
+from app.insights.common import active_jobs, cards, exclusion_opts, excluded_ids, excluded_select, fts_query, peer_card, sql
 from app.insights.sources import heatmap, list_sources, message_link, thread_label, timeline
 from app.models import JobParticipant, PeerNote, TgPeer, iso
 
@@ -74,6 +75,9 @@ async def list_users(
                  func.ulower(PeerNote.note).like(like)]
         if s.lstrip("-").isdigit():
             conds.append(agg.c.peer_id == int(s))
+        if match := fts_query(search):  # hand-entered details and attached PDFs
+            conds.append(agg.c.peer_id.in_(
+                text("SELECT peer_id FROM dossier_fts WHERE dossier_fts MATCH :dmatch").bindparams(dmatch=match).columns(peer_id=BigInteger)))
         q = q.where(or_(*conds))
     if tag:
         q = q.where(text("EXISTS (SELECT 1 FROM json_each(peer_notes.tags) WHERE json_each.value = :tag)").bindparams(tag=tag))
@@ -191,6 +195,7 @@ async def user_profile(db: AsyncSession, peer_id: int) -> dict[str, Any] | None:
     return {
         "peer": peer_card(peer, peer_id, note),
         "note": note.note if note else None,
+        "dossier": await dossier.get_dossier(db, peer_id),
         "about": peer.about if peer else None,
         "profile_checked_at": iso(peer.profile_checked_at) if peer else None,
         # channels found through this person: the one in the profile first, then bio mentions

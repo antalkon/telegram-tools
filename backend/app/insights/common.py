@@ -6,6 +6,7 @@ collected many times; insights always use one job per source — the latest fini
 back to the latest stopped (partial) run.
 """
 
+import re
 from typing import Any
 
 from sqlalchemy import bindparam, func, or_, select, text, union
@@ -137,3 +138,24 @@ async def sql(db: AsyncSession, query: str, jobs: list[int] | None = None, **par
             params[name] = list(value) or [-1]  # IN () is a syntax error in SQLite
             stmt = stmt.bindparams(bindparam(name, expanding=True))
     return (await db.execute(stmt, params)).all()
+
+
+def fts_query(raw: str) -> str | None:
+    """User syntax -> FTS5: words match by prefix, "quoted phrases" exactly, -word excludes."""
+    phrases = re.findall(r'"([^"]+)"', raw)
+    rest = re.sub(r'"[^"]*"', " ", raw)
+    must, never = [], []
+    for p in phrases:
+        words = re.findall(r"\w+", p)
+        if words:
+            must.append('"' + " ".join(words) + '"')
+    for tok in rest.split():
+        neg = tok.startswith("-") and len(tok) > 1
+        for w in re.findall(r"\w+", tok):
+            (never if neg else must).append(f'"{w}"*')
+    if not must:
+        return None
+    q = " AND ".join(must)
+    for n in never:
+        q += f" NOT {n}"
+    return q

@@ -65,6 +65,12 @@ _FTS = [
 ]
 
 
+# Search over hand-entered profile details and attached PDFs. Rows are written by app.insights.dossier
+# (one 'meta' row per person, one row per file), so it keeps its own content.
+_DOSSIER_FTS = ("CREATE VIRTUAL TABLE IF NOT EXISTS dossier_fts USING fts5(body, peer_id UNINDEXED, file_id UNINDEXED, "
+                "tokenize='unicode61 remove_diacritics 2')")
+
+
 async def rebuild_search_index() -> None:
     async with engine.begin() as conn:
         await conn.exec_driver_sql("INSERT INTO comments_fts(comments_fts) VALUES ('rebuild')")
@@ -89,6 +95,7 @@ async def init_db() -> None:
             for ddl in _FTS:
                 await conn.exec_driver_sql(ddl)
             await conn.exec_driver_sql("INSERT INTO comments_fts(comments_fts) VALUES ('rebuild')")
+        await conn.exec_driver_sql(_DOSSIER_FTS)
         # Backfill source ids for jobs finished before the column existed.
         await conn.exec_driver_sql(
             "UPDATE jobs SET source_id = COALESCE(json_extract(result, '$.channel.id'), json_extract(progress, '$.channel.id')) "

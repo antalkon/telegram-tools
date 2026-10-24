@@ -1,14 +1,14 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { ChevronDown, CornerDownRight, ExternalLink, Search as SearchIcon, TextSearch, UserRound, X } from 'lucide-react'
+import { ChevronDown, CornerDownRight, ExternalLink, FileText, IdCard, Search as SearchIcon, TextSearch, UserRound, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Avatar } from '../components/Avatar'
-import { ExportMenu, Flags, PeerLine, useSources } from '../components/PeerBits'
+import { ExportMenu, Flags, Highlighted, PeerLine, useSources } from '../components/PeerBits'
 import { TypeIcon } from '../components/SourceBits'
 import { Button, Card, EmptyState, Input, Segmented, Skeleton } from '../components/ui'
 import { Page, PageHeader } from '../layout/AppLayout'
-import { api, type ContextMessage, type PeerCard, type SearchHit, type SearchResult } from '../lib/api'
+import { api, type ContextMessage, type PeerCard, type PeopleSearchResult, type SearchHit, type SearchResult } from '../lib/api'
 import { dateTime, num, pluralRu } from '../lib/format'
 
 const PAGE = 50
@@ -20,20 +20,6 @@ function useDebounced<T>(value: T, ms = 350) {
     return () => clearTimeout(t)
   }, [value, ms])
   return v
-}
-
-/** Text with \x02…\x03 highlight markers from the API, rendered without HTML injection. */
-function Highlighted({ text }: { text: string | null }) {
-  if (!text) return <span className="text-fg-subtle italic">медиа без текста</span>
-  // eslint-disable-next-line no-control-regex -- the API's highlight markers are control characters
-  const parts = text.split(/(\x02[^\x03]*\x03)/)
-  return (
-    <>
-      {parts.map((p, i) =>
-        p.startsWith('\x02') ? <mark key={i} className="rounded-[3px] bg-accent/25 px-0.5 text-fg">{p.slice(1, -1)}</mark> : <span key={i}>{p}</span>,
-      )}
-    </>
-  )
 }
 
 function Context({ hit }: { hit: SearchHit }) {
@@ -89,6 +75,45 @@ function Hit({ hit }: { hit: SearchHit }) {
   )
 }
 
+/** People whose hand-entered details or attached PDFs match the query. */
+function PeopleHits({ q }: { q: string }) {
+  const people = useQuery({
+    queryKey: ['people-search', q],
+    queryFn: () => api<PeopleSearchResult>(`/search/people?${new URLSearchParams({ q, limit: '10' })}`),
+    enabled: !!q,
+    placeholderData: keepPreviousData,
+  })
+  if (!q || !people.data?.items.length) return null
+  return (
+    <Card className="mb-4 overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-line px-4 py-3 sm:px-5">
+        <IdCard className="size-4 text-accent" aria-hidden />
+        <span className="text-[15px] font-semibold">{num(people.data.total)}</span>
+        <span className="text-[13px] text-fg-muted">{pluralRu(people.data.total, 'человек', 'человека', 'человек')} по метаданным и документам</span>
+      </div>
+      <ul className="divide-y divide-line/70">
+        {people.data.items.map((p) => (
+          <li key={p.peer_id} className="flex flex-col gap-1.5 px-4 py-3 sm:px-5">
+            <PeerLine p={p} size={30} />
+            {p.matches.map((m, i) => (
+              <p key={i} className="flex min-w-0 items-start gap-1.5 text-[13px] text-fg-muted">
+                {m.file_id ? (
+                  <a href={`/api/users/${p.peer_id}/files/${m.file_id}`} target="_blank" rel="noreferrer" className="flex shrink-0 items-center gap-1 text-accent hover:underline">
+                    <FileText className="size-3.5" aria-hidden />{m.filename}
+                  </a>
+                ) : (
+                  <span className="shrink-0 text-fg-subtle">метаданные</span>
+                )}
+                <span className="min-w-0 break-words">· <Highlighted text={m.snippet} /></span>
+              </p>
+            ))}
+          </li>
+        ))}
+      </ul>
+    </Card>
+  )
+}
+
 export default function Search() {
   const sources = useSources()
   const [params, setParams] = useSearchParams()
@@ -134,7 +159,7 @@ export default function Search() {
 
   return (
     <Page wide>
-      <PageHeader icon={<TextSearch className="size-5" />} title="Поиск по сообщениям" description="По всем комментариям каналов и сообщениям чатов, что собраны в панели" />
+      <PageHeader icon={<TextSearch className="size-5" />} title="Поиск по сообщениям" description="По всем комментариям каналов и сообщениям чатов, что собраны в панели, а также по метаданным и PDF в профилях людей" />
       <Card className="mb-4 flex flex-col gap-3 p-4">
         <Input
           inputSize="lg"
@@ -173,6 +198,8 @@ export default function Search() {
           {!browse && total > 0 && <div className="ml-auto"><ExportMenu href={(fmt) => `/api/search/messages?${new URLSearchParams({ ...filters, format: fmt })}`} /></div>}
         </div>
       </Card>
+
+      {!!q && <PeopleHits q={q} />}
 
       {browse ? (
         <Card>

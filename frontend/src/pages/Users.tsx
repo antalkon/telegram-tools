@@ -126,7 +126,7 @@ export default function Users() {
             </div>
             <Input
               aria-label="Поиск по имени, @username, ID или заметке"
-              placeholder="Имя, @username, ID, заметка"
+              placeholder="Имя, @username, ID, заметка, ФИО, телефон, email, текст PDF"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               leading={<Search className="size-4" />}

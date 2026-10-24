@@ -1,15 +1,16 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
-from app.insights import graph, sources, users
-from app.insights.common import EXCLUSION_DEFAULTS, EXCLUSIONS_KEY, cards, exclusion_opts
+from app.insights import dossier, graph, sources, users
+from app.insights.common import EXCLUSION_DEFAULTS, EXCLUSIONS_KEY, cards, exclusion_opts, fts_query
 from app.jobs.runner import runner
-from app.models import Event, Job, Monitor, PeerNote, Setting, SourceMember, ThreadRoot
+from app.models import Event, Job, Monitor, PeerDossier, PeerFile, PeerNote, Setting, SourceMember, ThreadRoot
 from app.security import require_admin
 from app.tools.comment_collector import export
 
@@ -21,6 +22,8 @@ USER_COLUMNS = [
     ("first_at", "Первое сообщение"), ("last_at", "Последнее сообщение"),
     ("is_premium", "Premium"), ("is_bot", "Бот"), ("is_scam", "Scam/Fake"), ("is_deleted", "Удалён"),
     ("tags", "Метки"), ("note", "Заметка"),
+    ("full_name", "ФИО"), ("email", "Email"), ("contact_phone", "Телефон (вручную)"), ("country", "Страна"),
+    ("city", "Город"), ("address", "Адрес"), ("passport", "Паспорт"),
 ]
 
 
@@ -180,6 +183,10 @@ async def get_users(
                 show_ignored=show_ignored, presence=presence, family=family)
     if format:
         _, rows = await users.list_users(db, **args, limit=None)
+        details = {d.peer_id: dossier.dossier_out(d) for d in (await db.execute(select(PeerDossier))).scalars()}
+        for r in rows:
+            d = details.get(r["peer_id"], {})
+            r |= {k: d.get(k) for k in dossier.FIELDS if k != "phone"} | {"contact_phone": d.get("phone")}
         return _file(rows, format, "users", USER_COLUMNS)
     total, rows = await users.list_users(db, **args, offset=offset, limit=limit)
     return {"total": total, "items": rows}
@@ -225,6 +232,65 @@ class NoteIn(BaseModel):
 async def put_user_note(peer_id: int, body: NoteIn, db: AsyncSession = Depends(get_db)):
     n = await users.set_note(db, peer_id, body.tags, body.note, body.starred, body.ignored)
     return {"tags": n.tags, "note": n.note, "starred": n.starred, "ignored": n.ignored}
+
+
+# ---------- hand-entered details and attached PDFs ----------
+
+class DossierIn(BaseModel):
+    full_name: str | None = Field(None, max_length=255)
+    email: str | None = Field(None, max_length=255)
+    phone: str | None = Field(None, max_length=64)
+    country: str | None = Field(None, max_length=128)
+    city: str | None = Field(None, max_length=128)
+    address: str | None = Field(None, max_length=255)
+    passport: str | None = Field(None, max_length=64)
+
+
+@router.put("/users/{peer_id}/dossier")
+async def put_user_dossier(peer_id: int, body: DossierIn, db: AsyncSession = Depends(get_db)):
+    """Only the fields sent are changed; an empty string clears one."""
+    return await dossier.set_dossier(db, peer_id, body.model_dump(exclude_unset=True))
+
+
+@router.post("/users/{peer_id}/files")
+async def upload_user_files(peer_id: int, files: list[UploadFile] = File(...), db: AsyncSession = Depends(get_db)):
+    out = []
+    for f in files:
+        data = await f.read(dossier.MAX_FILE_BYTES + 1)
+        if len(data) > dossier.MAX_FILE_BYTES:
+            raise HTTPException(413, f"{f.filename}: файл больше {dossier.MAX_FILE_BYTES // 1024 // 1024} МБ")
+        if not data.startswith(b"%PDF"):
+            raise HTTPException(415, f"{f.filename}: это не PDF")
+        out.append(await dossier.add_file(db, peer_id, f.filename or "document.pdf", data))
+    return out
+
+
+@router.get("/users/{peer_id}/files/{file_id}")
+async def get_user_file(peer_id: int, file_id: int, download: bool = False, db: AsyncSession = Depends(get_db)):
+    f = await db.get(PeerFile, file_id)
+    path = dossier.file_path(file_id)
+    if f is None or f.peer_id != peer_id or not path.exists():
+        raise HTTPException(404, "Файл не найден")
+    return FileResponse(path, media_type="application/pdf", filename=f.filename,
+                        content_disposition_type="attachment" if download else "inline",
+                        headers={"Cache-Control": "private, no-store"})
+
+
+@router.delete("/users/{peer_id}/files/{file_id}")
+async def delete_user_file(peer_id: int, file_id: int, db: AsyncSession = Depends(get_db)):
+    if not await dossier.delete_file(db, peer_id, file_id):
+        raise HTTPException(404, "Файл не найден")
+    return {"ok": True}
+
+
+@router.get("/search/people")
+async def search_people(q: str = Query("", max_length=300), limit: int = Query(20, ge=1, le=100),
+                        db: AsyncSession = Depends(get_db)):
+    """People whose hand-entered details or attached PDFs match the query."""
+    match = fts_query(q) if q.strip() else None
+    if match is None:
+        return {"total": 0, "items": []}
+    return await dossier.search_people(db, match, limit)
 
 
 @router.get("/tags")

@@ -129,3 +129,17 @@ export function Stat({ icon, label, value, sub, tone }: { icon?: ReactNode; labe
 }
 
 export const pct = (v: number | null | undefined, digits = 0) => (v == null ? '—' : `${(v * 100).toFixed(digits)}%`)
+
+/** Text with \x02…\x03 highlight markers from the API, rendered without HTML injection. */
+export function Highlighted({ text }: { text: string | null }) {
+  if (!text) return <span className="text-fg-subtle italic">медиа без текста</span>
+  // eslint-disable-next-line no-control-regex -- the API's highlight markers are control characters
+  const parts = text.split(/(\x02[^\x03]*\x03)/)
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.startsWith('\x02') ? <mark key={i} className="rounded-[3px] bg-accent/25 px-0.5 text-fg">{p.slice(1, -1)}</mark> : <span key={i}>{p}</span>,
+      )}
+    </>
+  )
+}

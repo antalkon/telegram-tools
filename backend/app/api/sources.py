@@ -13,7 +13,7 @@ from app.api.insights import _file, _ids
 from app.api.jobs import job_out
 from app.config import get_settings
 from app.db import get_db, rebuild_search_index
-from app.insights import search
+from app.insights import dossier, search
 from app.insights.common import SOURCE_TOOLS, active_jobs
 from app.jobs.runner import runner
 from app.jobs.scheduler import _pick_account
@@ -180,8 +180,9 @@ async def maintenance_stats(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/maintenance/reindex-search")
-async def reindex_search():
+async def reindex_search(db: AsyncSession = Depends(get_db)):
     await rebuild_search_index()
+    await dossier.reindex(db)
     return {"ok": True}
 
 
