@@ -47,6 +47,9 @@ curl -H "Authorization: Bearer tgt_…" "https://panel.example.com/api/users?lim
 | `GET /api/graph?format=gexf` | Граф для Gephi; `graphml` — для yEd и Maltego |
 | `POST /api/tools/channel-posts/jobs` | Сбор постов: `{"channel": "@name", "via": "web"}` — без аккаунта |
 | `GET /api/orgs/{inn}` | Компания из ЕГРЮЛ/ЕГРИП по ИНН или ОГРН |
+| `GET /api/favorites`, `PUT /api/favorites/{peer_id}` | Избранное: люди, источники, каналы; `{"starred": true}` |
+| `GET /api/data/export` | Все данные одним ZIP (нужен полный доступ); импорт и очистка — только из панели |
+| `GET /api/settings/limits`, `/stats` | Профиль нагрузки на Telegram и журнал FloodWait |
 
 ## MCP-сервер
 
@@ -109,8 +112,10 @@ claude mcp add --transport http tg-toolkit https://panel.example.com/mcp --heade
 | `list_post_channels`, `list_posts` | Собранные посты: просмотры, репосты, первоисточник, реклама |
 | `list_advertisers`, `lookup_company` | Рекламодатели из маркированных постов; карточка компании из ЕГРЮЛ |
 | `get_username_sites` | Где ещё найден тот же username |
+| `list_favorites` | Избранные люди, источники и каналы |
 
-**Изменения** (нужен полный доступ): `update_user_note` (метки, заметка, избранное, игнор),
+**Изменения** (нужен полный доступ): `update_user_note` (метки, заметка, избранное, игнор), `set_favorite`
+(звёздочка у человека, источника или канала),
 `update_user_metadata` (ФИО, email, телефон, страна, город, адрес, паспорт) и `check_username` (проверка
 username на других сайтах, без Telegram).
 

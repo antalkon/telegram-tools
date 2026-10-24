@@ -226,6 +226,23 @@ async def update_user_note(peer_id: int, tags: list[str] | None = None, note: st
     return {"tags": n.tags, "note": n.note, "starred": n.starred, "ignored": n.ignored}
 
 
+@mcp.tool(annotations=READ)
+async def list_favorites() -> dict[str, Any]:
+    """Everything the user starred: people, sources (collected channels / chats) and other channels."""
+    async with SessionLocal() as db:
+        return await users.favorites(db)
+
+
+@mcp.tool(annotations=WRITE)
+async def set_favorite(peer_id: int, starred: bool = True) -> dict[str, Any]:
+    """Star or unstar a person, source or channel (marked id: people positive, channels -100…).
+    Needs a full-access token."""
+    _need_full()
+    async with SessionLocal() as db:
+        n = await users.set_note(db, peer_id, None, None, starred, None)
+    return {"peer_id": peer_id, "starred": n.starred}
+
+
 @mcp.tool(annotations=WRITE)
 async def update_user_metadata(peer_id: int, full_name: str | None = None, email: str | None = None,
                                phone: str | None = None, country: str | None = None, city: str | None = None,

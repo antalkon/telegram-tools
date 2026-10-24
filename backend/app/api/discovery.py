@@ -11,7 +11,7 @@ from app.api.insights import _file
 from app.api.jobs import job_out
 from app.api.sources import _account
 from app.db import get_db
-from app.insights.common import active_jobs, cards, sql
+from app.insights.common import active_jobs, cards, sql, starred_ids
 from app.jobs.runner import runner
 from app.models import FoundChannel, Job, iso
 from app.security import require_admin
@@ -84,6 +84,7 @@ async def _rows(db: AsyncSession) -> list[dict[str, Any]]:
     found = (await db.execute(select(FoundChannel))).scalars().all()
     links = (await db.execute(text("SELECT key, user_id, via FROM found_channel_links ORDER BY rowid"))).all()
     sources = set(await active_jobs(db, include_hidden=True))
+    starred = await starred_ids(db)
     by_key: dict[str, dict[str, Any]] = {}
     for key, uid, via in links:
         b = by_key.setdefault(key, {"users": [], "via": _no_via()})
@@ -102,7 +103,7 @@ async def _rows(db: AsyncSession) -> list[dict[str, Any]]:
             "link": _link(f), "members_count": f.members_count, "about": (f.about or "")[:400] or None,
             "photo_id": _photo(f.photo_id), "private": f.private, "dismissed": f.dismissed,
             "found_at": iso(f.found_at), "checked_at": iso(f.checked_at),
-            "is_source": f.peer_id in sources, "via": b["via"], "users": len(b["users"]), "user_ids": b["users"],
+            "is_source": f.peer_id in sources, "starred": f.peer_id in starred, "via": b["via"], "users": len(b["users"]), "user_ids": b["users"],
         })
     return out
 
@@ -114,7 +115,7 @@ CHANNEL_COLUMNS = [("title", "Название"), ("type", "Тип"), ("username
 
 @router.get("/discovery/channels")
 async def found_channels(
-    status: Literal["new", "sources", "dismissed", "all"] = "new",
+    status: Literal["new", "sources", "dismissed", "starred", "all"] = "new",
     type: Literal["all", "channel", "chat", "private"] = "all",
     via: Literal["all", "personal", "bio", "sender", "forward", "mention", "similar"] = "all",
     q: str = Query("", max_length=100),
@@ -125,9 +126,10 @@ async def found_channels(
     db: AsyncSession = Depends(get_db),
 ):
     rows = await _rows(db)
-    counts = {"new": 0, "sources": 0, "dismissed": 0, "all": len(rows)}
+    counts = {"new": 0, "sources": 0, "dismissed": 0, "starred": 0, "all": len(rows)}
     for r in rows:
         counts["dismissed" if r["dismissed"] else "sources" if r["is_source"] else "new"] += 1
+        counts["starred"] += r["starred"]
     needle = q.strip().lower().lstrip("@")
 
     def keep(r) -> bool:
@@ -136,6 +138,8 @@ async def found_channels(
         if status == "sources" and not r["is_source"]:
             return False
         if status == "dismissed" and not r["dismissed"]:
+            return False
+        if status == "starred" and not r["starred"]:
             return False
         if type == "private" and not r["private"]:
             return False

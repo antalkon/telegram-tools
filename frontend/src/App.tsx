@@ -17,6 +17,7 @@ import ChatIndexer from './pages/ChatIndexer'
 import ChannelPosts from './pages/ChannelPosts'
 import Search from './pages/Search'
 import Home from './pages/Home'
+import Favorites from './pages/Favorites'
 import Jobs from './pages/Jobs'
 import Login from './pages/Login'
 
@@ -76,6 +77,7 @@ export default function App() {
         <Route path="users" element={<Users />} />
         <Route path="users/channels" element={<FoundChannels />} />
         <Route path="users/:peerId" element={<UserProfile />} />
+        <Route path="favorites" element={<Favorites />} />
         <Route path="channels" element={<Channels />} />
         <Route path="channels/:sourceId" element={<ChannelAnalytics />} />
         <Route path="overlap" element={<Overlap />} />

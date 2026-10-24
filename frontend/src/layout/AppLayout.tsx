@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { BookOpen, GitCompareArrows, History, Layers, LayoutDashboard, LogOut, Menu, Network, Settings as SettingsIcon, Smartphone, TextSearch, Users, X } from 'lucide-react'
+import { BookOpen, GitCompareArrows, History, Layers, LayoutDashboard, LogOut, Menu, Network, Settings as SettingsIcon, Smartphone, Star, TextSearch, Users, X } from 'lucide-react'
 import { NotificationBell } from '../components/NotificationBell'
 import { Suspense, useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -74,6 +74,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <NavItem to="/" end icon={<LayoutDashboard className="size-4" />}>Обзор</NavItem>
         <NavItem to="/users" icon={<Users className="size-4" />}>Пользователи</NavItem>
         <NavItem to="/channels" icon={<Layers className="size-4" />}>Источники</NavItem>
+        <NavItem to="/favorites" icon={<Star className="size-4" />}>Избранное</NavItem>
         <NavItem to="/search" icon={<TextSearch className="size-4" />}>Поиск</NavItem>
         <NavItem to="/overlap" icon={<GitCompareArrows className="size-4" />}>Пересечения</NavItem>
         <NavItem to="/graph" icon={<Network className="size-4" />}>Граф связей</NavItem>

@@ -12,6 +12,7 @@ from telethon.sessions import StringSession
 from app.db import SessionLocal
 from app.models import Account
 from app.security import decrypt, encrypt
+from app.telegram import limits
 from app.telegram.peers import download_avatar
 
 PENDING_TTL = 15 * 60
@@ -31,8 +32,41 @@ class PendingLogin:
     created: float = field(default_factory=time.monotonic)
 
 
-def _new_client(session: str, api_id: int, api_hash: str) -> TelegramClient:
-    return TelegramClient(
+class PacedClient(TelegramClient):
+    """Every request (history pages, file parts and lookups alike) goes through the account's pacer
+    first, and FloodWaits are handled here rather than inside Telethon so each one is logged."""
+
+    account_id: int | None = None
+
+    async def _call(self, sender, request, ordered=False, flood_sleep_threshold=None):
+        lim = limits.current()
+        # 0 means "raise at once" (set by callers that handle FloodWaits themselves); otherwise the profile decides
+        threshold = self.flood_sleep_threshold if flood_sleep_threshold is None else flood_sleep_threshold
+        threshold = lim.flood_sleep_threshold if threshold else 0
+        kind = limits.kind_of(request)
+        pacer = limits.pacer(self.account_id)
+        first = request[0] if isinstance(request, list) and request else request
+        while True:
+            # a FloodWait Telegram already gave for this method: wait it out without asking again
+            pending = self._flood_waited_requests.get(getattr(first, "CONSTRUCTOR_ID", None), 0) - time.time()
+            if pending > 3:
+                if pending > threshold:
+                    raise errors.FloodWaitError(request=first, capture=round(pending))
+                await asyncio.sleep(pending)
+            await pacer.wait(kind, lim)
+            limits.count_request(self.account_id)
+            try:
+                return await super()._call(sender, request, ordered=ordered, flood_sleep_threshold=0)
+            except errors.FloodWaitError as e:
+                limits.record_flood(self.account_id, request, e.seconds)
+                pacer.flooded(kind, e.seconds)
+                if e.seconds > threshold:
+                    raise
+                await asyncio.sleep(e.seconds + 1)
+
+
+def _new_client(session: str, api_id: int, api_hash: str, account_id: int | None = None) -> TelegramClient:
+    client = PacedClient(
         StringSession(session),
         api_id,
         api_hash,
@@ -41,6 +75,8 @@ def _new_client(session: str, api_id: int, api_hash: str) -> TelegramClient:
         app_version="1.0",
         system_version="Web",
     )
+    client.account_id = account_id
+    return client
 
 
 class AccountManager:
@@ -61,7 +97,7 @@ class AccountManager:
                 acc = await db.get(Account, account_id)
                 if not acc:
                     raise LoginError("Аккаунт не найден")
-                client = _new_client(decrypt(acc.session_enc), acc.api_id, decrypt(acc.api_hash_enc))
+                client = _new_client(decrypt(acc.session_enc), acc.api_id, decrypt(acc.api_hash_enc), account_id)
                 await client.connect()
                 if not await client.is_user_authorized():
                     acc.status, acc.last_error = "error", "Сессия больше не авторизована — подключите аккаунт заново"
@@ -168,6 +204,7 @@ class AccountManager:
             await db.commit()
             await db.refresh(acc)
         await self.drop(acc.id)
+        p.client.account_id = acc.id
         self._clients[acc.id] = p.client
         return acc
 

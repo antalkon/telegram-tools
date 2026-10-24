@@ -77,6 +77,8 @@ async def reconcile() -> None:
 async def tick(now: datetime | None = None) -> list[int]:
     """Start every enabled monitor that is due. Returns the started job ids."""
     now = now or datetime.now(UTC)
+    if runner.blocked:  # data import or wipe in progress
+        return []
     await reconcile()
     async with SessionLocal() as db:
         due = [m.id for m in (await db.execute(select(Monitor).where(Monitor.enabled.is_(True)))).scalars()

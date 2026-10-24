@@ -47,6 +47,10 @@ machine: one container and one SQLite file, with no cloud services. The UI is in
   - an audience-overlap matrix;
   - an interactive people ↔ channels graph.
 - **Export** to XLSX, CSV and JSON.
+- **Favourites:** star people, sources and channels; they get their own page and float to the top of lists.
+- **Backup and transfer:** export everything to one ZIP (with avatars and, optionally, Telegram sessions),
+  import it here or into another panel — replace everything, merge keeping your records, or merge replacing
+  matches — and wipe all collected data with a safety copy.
 - **Enrichment:**
   - profile change history (name, username, photo, bio, phone) and an approximate account age;
   - channel posts with views, forwards and ad marking (erid, advertiser ИНН), collected through the account
@@ -61,6 +65,9 @@ machine: one container and one SQLite file, with no cloud services. The UI is in
   Cursor connect to the built-in MCP server at `/mcp`. Both use API tokens from the settings page, read-only
   or full access.
 - **Rate-limit aware:**
+  - a load profile in the settings: *standard* (full speed, as before), *optimized* (paced requests, pauses
+    between jobs, adaptive slow-down after a FloodWait) or your own values for each kind of request;
+  - a FloodWait log per request method, to tune the profile by;
   - FloodWait countdowns, after which the job resumes where it stopped;
   - a ban on one request method is parked while the other methods keep running;
   - caching.

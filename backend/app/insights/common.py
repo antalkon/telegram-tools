@@ -49,6 +49,11 @@ async def excluded_ids(db: AsyncSession) -> set[int]:
     return set((await db.execute(excluded_select(await exclusion_opts(db)))).scalars())
 
 
+async def starred_ids(db: AsyncSession) -> set[int]:
+    """Favourites: people, sources and channels marked with a star (all share PeerNote.starred)."""
+    return set((await db.execute(select(PeerNote.peer_id).where(PeerNote.starred.is_(True)))).scalars())
+
+
 async def hidden_sources(db: AsyncSession) -> set[int]:
     return set((await db.execute(select(PeerNote.peer_id).where(PeerNote.ignored.is_(True), PeerNote.peer_id < 0))).scalars())
 

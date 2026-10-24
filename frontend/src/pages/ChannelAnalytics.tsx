@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Avatar } from '../components/Avatar'
 import { BarList, Heatmap, SERIES, StackedBars, TimeBars, bucketLabel } from '../components/charts'
-import { PeerLine, Stat, pct, useSourceMap } from '../components/PeerBits'
+import { PeerLine, StarButton, Stat, pct, useSourceMap } from '../components/PeerBits'
 import { Badge, Button, Card, CardHeader, EmptyState, Segmented, Skeleton } from '../components/ui'
 import { Page } from '../layout/AppLayout'
 import { api, type SourceAnalytics } from '../lib/api'
@@ -71,7 +71,8 @@ export default function ChannelAnalytics() {
             <span className="text-fg-subtle">обновлён {relative(s.collected_at)}</span>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <StarButton peerId={s.id} starred={!!s.starred} withLabel />
           <Button variant="secondary" icon={<Users className="size-4" />} onClick={() => navigate(`/users?source=${s.id}`)}>{chat ? 'Люди' : 'Комментаторы'}</Button>
           <Button variant="ghost" icon={<TextSearch className="size-4" />} onClick={() => navigate(`/search?source=${s.id}`)}>Поиск</Button>
           <PdfButton href={`/api/sources/${s.id}/report.pdf`} label="Отчёт PDF" />

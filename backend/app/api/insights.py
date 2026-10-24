@@ -248,6 +248,24 @@ async def put_user_note(peer_id: int, body: NoteIn, db: AsyncSession = Depends(g
     return {"tags": n.tags, "note": n.note, "starred": n.starred, "ignored": n.ignored}
 
 
+# ---------- favourites ----------
+
+class StarIn(BaseModel):
+    starred: bool
+
+
+@router.get("/favorites", summary="Starred people, sources and channels")
+async def get_favorites(db: AsyncSession = Depends(get_db)):
+    return await users.favorites(db)
+
+
+@router.put("/favorites/{peer_id}", summary="Star or unstar a person, source or channel")
+async def set_favorite(peer_id: int, body: StarIn, db: AsyncSession = Depends(get_db)):
+    """peer_id is the marked id: people positive, channels and chats -100…"""
+    n = await users.set_note(db, peer_id, None, None, body.starred, None)
+    return {"peer_id": peer_id, "starred": n.starred}
+
+
 # ---------- hand-entered details and attached PDFs ----------
 
 class DossierIn(BaseModel):

@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,12 +13,13 @@ import app.tools.channel_posts.posts  # noqa: F401  (registers the tool)
 import app.tools.chat_indexer.indexer  # noqa: F401  (registers the tool)
 import app.tools.comment_collector.collector  # noqa: F401  (registers the tool)
 import app.tools.username_check.check  # noqa: F401  (registers the tool)
-from app.api import accounts, auth, comment_collector, discovery, insights, jobs, monitoring, posts, sources, tokens
+from app.api import accounts, auth, comment_collector, data, discovery, insights, jobs, monitoring, posts, sources, tokens
 from app.config import get_settings
-from app.db import init_db
-from app.jobs.runner import runner
+from app.db import SessionLocal, init_db
+from app.jobs.runner import JobsBlocked, runner
 from app.jobs.scheduler import scheduler
 from app.mcp_server import http_app as mcp_http_app, mcp
+from app.telegram import limits
 from app.telegram.contacts import backfill_bio_phones
 from app.security import COOKIE_NAME, require_admin, verify_token
 from app.telegram.manager import manager
@@ -38,6 +40,8 @@ async def lifespan(_app: FastAPI):
         logging.warning("Default TGT_ADMIN_PASSWORD / TGT_SECRET_KEY in use — set them in .env before exposing the panel")
     await init_db()
     await backfill_bio_phones()
+    async with SessionLocal() as db:
+        await limits.load(db)
     await runner.recover()
     if s.scheduler_enabled:
         scheduler.start()
@@ -47,7 +51,7 @@ async def lifespan(_app: FastAPI):
     await manager.shutdown()
 
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 API_DESCRIPTION = """HTTP API of the TG Toolkit panel: everything the web UI does is available here.
 
 **Authorization.** Create a token in the panel under *Настройки → API-токены* and send it as
@@ -62,8 +66,15 @@ app = FastAPI(title="TG Toolkit API", version=VERSION, lifespan=lifespan, docs_u
 
 for r in (auth.router, accounts.router, jobs.router, comment_collector.router, comment_collector.jobs_router,
           comment_collector.indexer_router, insights.router, monitoring.router, sources.router, discovery.router,
-          posts.router, tokens.router):
+          posts.router, tokens.router, data.router):
     app.include_router(r, prefix="/api")
+
+
+
+@app.exception_handler(JobsBlocked)
+async def jobs_blocked(_request: Request, exc: JobsBlocked):
+    return JSONResponse({"detail": str(exc)}, status_code=409)
+
 
 # MCP endpoint (POST/GET/DELETE /mcp); token auth happens inside.
 app.router.routes.append(Route("/mcp", endpoint=mcp_http_app(), methods=["GET", "POST", "DELETE"]))

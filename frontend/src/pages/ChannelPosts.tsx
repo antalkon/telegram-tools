@@ -1,10 +1,10 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { Building2, Eye, ExternalLink, Globe, Loader2, Megaphone, Newspaper, Play, Repeat2, Search, Smartphone } from 'lucide-react'
+import { Building2, Eye, ExternalLink, Globe, Loader2, Megaphone, Newspaper, Play, Repeat2, Search, Smartphone, Star } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { AccountPicker, defaultAccount, useAccounts } from '../components/SourceBits'
-import { ExportMenu } from '../components/PeerBits'
+import { ExportMenu, StarButton } from '../components/PeerBits'
 import { useToast } from '../components/Toast'
 import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, ProgressBar, Segmented, Skeleton } from '../components/ui'
 import { isTerminal, useJob } from '../features/collector/useJob'
@@ -236,12 +236,13 @@ export default function ChannelPosts() {
                 className={clsx('h-8 rounded-full border px-3 text-[12.5px] transition-colors', !channel ? 'border-accent/60 bg-accent-soft text-fg' : 'border-line text-fg-muted hover:text-fg')}>
                 Все каналы
               </button>
-              {channels.data.map((c) => {
+              {[...channels.data].sort((a, b) => Number(b.starred) - Number(a.starred)).map((c) => {
                 const key = c.channel_id ? String(c.channel_id) : c.key
                 return (
                   <button key={c.key} onClick={() => set('channel', key)} aria-pressed={channel === key}
                     title={`${num(c.posts)} постов · средн. просмотров ${c.avg_views != null ? compact(c.avg_views) : '—'} · собрано ${relative(c.collected_at)} (${c.via.map((v) => (v === 'web' ? 'без аккаунта' : 'аккаунт')).join(', ')})`}
                     className={clsx('flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12.5px] transition-colors', channel === key ? 'border-accent/60 bg-accent-soft text-fg' : 'border-line text-fg-muted hover:text-fg')}>
+                    {c.starred && <Star className="size-3 fill-warning text-warning" aria-label="избранное" />}
                     {c.title}<span className="font-mono text-[11.5px] text-fg-subtle">{num(c.posts)}</span>
                     {c.ads > 0 && <Megaphone className="size-3 text-warning" aria-label={`рекламных: ${c.ads}`} />}
                   </button>
@@ -249,7 +250,10 @@ export default function ChannelPosts() {
               })}
             </div>
             {channel && channel.startsWith('-100') && (
-              <Link to={`/channels/${channel}`} className="mt-3 inline-block text-[12.5px] text-accent hover:underline">Аналитика этого канала →</Link>
+              <div className="mt-3 flex items-center gap-3">
+                <StarButton peerId={Number(channel)} starred={!!channels.data.find((c) => String(c.channel_id) === channel)?.starred} withLabel />
+                <Link to={`/channels/${channel}`} className="text-[12.5px] text-accent hover:underline">Аналитика этого канала →</Link>
+              </div>
             )}
           </Card>
         )}

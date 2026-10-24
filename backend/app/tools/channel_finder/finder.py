@@ -26,6 +26,7 @@ from app.insights.common import active_jobs, excluded_ids, sql
 from app.insights.sources import list_sources
 from app.jobs.runner import JobContext
 from app.models import ChannelPost, FoundChannel, FoundChannelLink, Job, PeerAccess, PeerHistory, Setting, TgPeer, UsernameLookup, utcnow
+from app.telegram import limits
 from app.telegram.access import save_access
 from app.telegram.bio import Ref, extract_refs
 from app.telegram.contacts import extract_phones
@@ -40,8 +41,6 @@ TOOL_ID = "channel-finder"
 MAX_WAIT = 300  # a longer FloodWait postpones the rest of that phase to the next run
 TRANSPORT_BACKOFF = (30, 60, 120)  # waits after a transport-level 429 before giving up for a while
 TRANSPORT_BLOCK = timedelta(minutes=15)
-DETAILS_LIMIT = 500
-DETAILS_TTL = timedelta(days=7)
 
 
 class FinderInput(BaseModel):
@@ -557,8 +556,8 @@ class ChannelFinder(Tool):
         async with SessionLocal() as db:
             stale = (await db.execute(select(FoundChannel).where(
                 FoundChannel.peer_id.is_not(None), FoundChannel.private.is_(False),
-                (FoundChannel.checked_at.is_(None)) | (FoundChannel.checked_at < utcnow() - DETAILS_TTL),
-            ).limit(DETAILS_LIMIT))).scalars().all()
+                (FoundChannel.checked_at.is_(None)) | (FoundChannel.checked_at < utcnow() - timedelta(days=limits.current().details_ttl_days)),
+            ).limit(limits.current().details_limit))).scalars().all()
             hashes = dict((await db.execute(select(PeerAccess.peer_id, PeerAccess.access_hash).where(
                 PeerAccess.account_id == ctx.account_id, PeerAccess.peer_id.in_([f.peer_id for f in stale] or [0])))).all())
         await ctx.update(force=True, phase="details", details_total=len(stale), details_done=0)

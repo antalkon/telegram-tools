@@ -15,6 +15,7 @@ from app.jobs.runner import JobContext
 from app import notify
 from app.insights.common import active_jobs, cards, excluded_ids
 from app.models import Comment, Job, JobParticipant, PeerNote, ThreadRoot, iso, utcnow
+from app.telegram import limits
 from app.telegram.links import ChannelRef, LinkError, parse_channel_link
 from app.telegram.access import save_access
 from app.telegram.peers import avatar_path, download_avatar, mark_missed, recently_missed, upsert_peers
@@ -22,7 +23,6 @@ from app.tools.base import Tool, register
 from app.tools.comment_collector.aggregate import CommentAggregator
 
 BATCH = 500
-AVATAR_CONCURRENCY = 3
 AVATAR_TIMEOUT = 30  # seconds per photo; cross-DC downloads can stall
 AVATAR_BUDGET = 15 * 60  # the rest is picked up by the next run
 # Errors meaning "the discussion group's history is not readable by this account".
@@ -465,7 +465,7 @@ class CommentCollector(Tool):
 
         started = time.monotonic()
         resume_at = 0.0  # shared FloodWait gate
-        sem = asyncio.Semaphore(AVATAR_CONCURRENCY)
+        sem = asyncio.Semaphore(limits.current().avatar_concurrency)
         done = 0
         # Surface FloodWaits as exceptions instead of Telethon silently sleeping up to a minute per file.
         saved_threshold = client.flood_sleep_threshold

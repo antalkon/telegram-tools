@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.insights.common import cards, sql
+from app.insights.common import cards, sql, starred_ids
 from app.insights.orgs import cached_many
 from app.insights.sources import list_sources, message_link
 from app.models import ChannelPost, TgPeer, iso
@@ -45,13 +45,14 @@ async def post_channels(db: AsyncSession) -> list[dict[str, Any]]:
     ).group_by(ChannelPost.channel_key).order_by(func.max(ChannelPost.collected_at).desc()))).all()
     peers = {p.id: p for p in (await db.execute(select(TgPeer).where(
         TgPeer.id.in_([r[1] for r in rows if r[1]] or [0])))).scalars()}
+    starred = await starred_ids(db)
     out = []
     for key, cid, username, n, ads, collected, newest, oldest, avg_views, via in rows:
         peer = peers.get(cid)
         out.append({"key": key, "channel_id": cid, "username": username,
                     "title": (peer.title if peer else None) or (f"@{username}" if username else key),
                     "posts": n, "ads": ads or 0, "collected_at": iso(collected), "newest": iso(newest), "oldest": iso(oldest),
-                    "avg_views": round(avg_views) if avg_views else None, "via": (via or "").split(",")})
+                    "avg_views": round(avg_views) if avg_views else None, "via": (via or "").split(","), "starred": cid in starred})
     return out
 
 

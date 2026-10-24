@@ -3,6 +3,7 @@ import clsx from 'clsx'
 import { Bell, Bot, Bookmark, Database, EyeOff, Send, Settings as SettingsIcon, Undo2 } from 'lucide-react'
 import { useState } from 'react'
 import { ApiTokensCard, McpCard } from '../components/ApiAccess'
+import { DataTransferCard, TelegramLimitsCard } from '../components/DataSettings'
 import { PeerLine } from '../components/PeerBits'
 import { useInvalidateAnalytics } from '../components/SourceActions'
 import { useToast } from '../components/Toast'
@@ -224,11 +225,13 @@ export default function Settings() {
   const [fresh, setFresh] = useState<(ApiToken & { token: string }) | null>(null)
   return (
     <Page>
-      <PageHeader icon={<SettingsIcon className="size-5" />} title="Настройки" description="Уведомления, исключения из аналитики, обслуживание данных, API и MCP" />
+      <PageHeader icon={<SettingsIcon className="size-5" />} title="Настройки" description="Уведомления, нагрузка на Telegram, исключения, данные и их перенос, API и MCP" />
       <div className="flex flex-col gap-5">
         <NotificationsCard />
+        <TelegramLimitsCard />
         <ExclusionsCard />
         <MaintenanceCard />
+        <DataTransferCard />
         <section id="api" className="flex scroll-mt-6 flex-col gap-5">
           <ApiTokensCard fresh={fresh} onCreated={setFresh} />
           <McpCard token={fresh?.token ?? null} />

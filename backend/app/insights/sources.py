@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.insights.common import COLLECTOR, active_jobs, cards, excluded_ids, hidden_sources, peers_by_id, photo, sql
+from app.insights.common import COLLECTOR, active_jobs, cards, excluded_ids, hidden_sources, peers_by_id, photo, sql, starred_ids
 from app.models import Job, JobParticipant, Monitor, iso
 from app.telegram.resolve import public_link
 
@@ -78,6 +78,7 @@ async def list_sources(db: AsyncSession, include_hidden: bool = False) -> list[d
         (await db.execute(select(Job.source_id, func.count()).where(Job.source_id.in_(act.keys())).group_by(Job.source_id))).all()
     )
     peers = await peers_by_id(db, act.keys())
+    starred = await starred_ids(db)
     out = []
     for sid, jid in act.items():
         job = jobs[jid]
@@ -114,6 +115,7 @@ async def list_sources(db: AsyncSession, include_hidden: bool = False) -> list[d
             "posts_with_comments": res.get("posts_with_comments"),
             "runs": runs.get(sid, 1),
             "hidden": sid in hidden,
+            "starred": sid in starred,
             "running": sid in running,
             "options": {k: v for k, v in (job.input or {}).items() if k not in ("channel", "mode", "monitor_id")},
             "input": (job.input or {}).get("channel"),

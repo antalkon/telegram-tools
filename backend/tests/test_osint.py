@@ -16,7 +16,7 @@ from app.db import SessionLocal, init_db
 from app.insights import graph, graph_export, orgs, posts
 from app.main import app
 from app.models import ChannelPost, FoundChannel, FoundChannelLink, Job, OrgLookup, PeerHistory, TgPeer, UsernameCheck
-from app.telegram import age
+from app.telegram import age, limits
 from app.telegram.contacts import ad_marking, extract_contacts, valid_inn, valid_ogrn
 from app.telegram.peers import upsert_peers
 from app.telegram.web_preview import channel_id_from_view, count, parse_page
@@ -99,7 +99,7 @@ async def test_web_posts_contacts_and_ads(db, monkeypatch):  # noqa: F811
         return pages[before]
 
     monkeypatch.setattr(posts_tool, "fetch_page", fake_fetch)
-    monkeypatch.setattr(posts_tool, "WEB_PAGE_DELAY", 0)
+    monkeypatch.setitem(limits.current().values, "web_page_delay", 0)
     job = await runner.submit("channel-posts", None, {"channel": "https://t.me/testchan", "via": "web", "limit": 100})
     await runner.wait(job.id)
     async with SessionLocal() as s:

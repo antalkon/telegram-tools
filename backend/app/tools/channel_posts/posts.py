@@ -19,6 +19,7 @@ from telethon.tl import types
 from app.db import SessionLocal
 from app.jobs.runner import JobContext
 from app.models import ChannelPost, TgPeer, utcnow
+from app.telegram import limits
 from app.telegram.access import save_access
 from app.telegram.contacts import ad_marking
 from app.telegram.links import LinkError, parse_channel_link
@@ -30,7 +31,6 @@ from app.tools.comment_collector.aggregate import forwarded_from
 
 TOOL_ID = "channel-posts"
 BATCH = 300
-WEB_PAGE_DELAY = 1.5  # seconds between t.me/s pages: polite, and keeps clear of its rate limit
 
 
 class PostsInput(BaseModel):
@@ -204,7 +204,7 @@ class ChannelPosts(Tool):
                 if stop or nxt <= 1 or nxt == before:
                     break
                 before = nxt
-                await asyncio.sleep(WEB_PAGE_DELAY)
+                await asyncio.sleep(limits.current().web_page_delay)  # polite, and keeps clear of t.me's rate limit
         await ctx.update(force=True, posts_done=done, ads=ads)
         return {"channel": info, "posts": done, "ads": ads, "pages": pages}
 

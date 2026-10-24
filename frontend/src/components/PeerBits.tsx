@@ -1,10 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { BadgeCheck, Bot, Crown, Download, FileJson, FileSpreadsheet, FileText, Megaphone, ShieldAlert, Skull, Star } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type PeerCard, type Source } from '../lib/api'
 import { Avatar } from './Avatar'
+import { useToast } from './Toast'
 import { Button } from './ui'
 
 export function useSources() {
@@ -29,6 +30,45 @@ export function Flags({ p }: { p: FlagPeer }) {
       {p.is_scam && <ShieldAlert className="size-3.5 shrink-0 text-danger" aria-label="scam" />}
       {p.is_deleted && <Skull className="size-3.5 shrink-0 text-fg-subtle" aria-label="удалён" />}
     </>
+  )
+}
+
+// lists that show stars: refreshed after a change
+const STAR_KEYS = ['favorites', 'sources', 'source', 'users', 'user', 'discovery', 'posts']
+
+/** Star toggle for a person, source or channel (all keyed by the marked peer id). */
+export function StarButton({ peerId, starred, withLabel, className }: { peerId: number; starred: boolean; withLabel?: boolean; className?: string }) {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const save = useMutation({
+    mutationFn: (v: boolean) => api(`/favorites/${peerId}`, { method: 'PUT', json: { starred: v } }),
+    onSuccess: () => STAR_KEYS.forEach((k) => qc.invalidateQueries({ queryKey: [k] })),
+    onError: (e) => toast(e.message, 'error'),
+  })
+  const on = save.isPending ? !!save.variables : starred  // optimistic while saving
+  const label = on ? 'Убрать из избранного' : 'В избранное'
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      aria-label={withLabel ? undefined : label}
+      title={withLabel ? undefined : label}
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        save.mutate(!on)
+      }}
+      onKeyDown={(e) => e.stopPropagation()}  // inside clickable table rows: Enter / Space toggle the star only
+      className={clsx(
+        'flex shrink-0 items-center justify-center gap-1 rounded-full transition-colors duration-150',
+        withLabel ? 'h-7 border px-2.5 text-[12.5px]' : 'size-8',
+        on ? (withLabel ? 'border-warning/50 bg-warning-soft text-warning' : 'text-warning') : withLabel ? 'border-line text-fg-muted hover:text-fg' : 'text-fg-subtle hover:bg-elevated hover:text-warning',
+        className,
+      )}
+    >
+      <Star className={clsx('size-4', on && 'fill-warning')} aria-hidden />
+      {withLabel && (on ? 'В избранном' : 'В избранное')}
+    </button>
   )
 }
 

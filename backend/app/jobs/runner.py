@@ -4,6 +4,7 @@ periodically and fanned out to SSE subscribers."""
 import asyncio
 import logging
 import time
+from datetime import timedelta
 from contextvars import ContextVar
 from typing import Any
 
@@ -12,6 +13,7 @@ from telethon import TelegramClient
 
 from app.db import SessionLocal
 from app.models import Job, utcnow
+from app.telegram import limits
 from app.telegram.manager import manager
 from app.tools.base import get_tool
 
@@ -60,12 +62,21 @@ class JobContext:
                 await db.commit()
 
 
+class JobsBlocked(Exception):
+    pass
+
+
 class JobRunner:
     def __init__(self) -> None:
         self._tasks: dict[int, asyncio.Task] = {}
         self._contexts: dict[int, JobContext] = {}
         self._subs: dict[int, set[asyncio.Queue]] = {}
         self._account_locks: dict[int, asyncio.Lock] = {}
+        self._last_end: dict[int, float] = {}  # account -> when its last job ended (monotonic)
+        self.blocked: str | None = None  # why new jobs are refused (data import or wipe in progress)
+
+    def active(self) -> list[int]:
+        return [j for j, t in self._tasks.items() if not t.done()]
 
     async def recover(self) -> None:
         """Jobs that were running when the server stopped can't be resumed in-process. Ones that
@@ -89,6 +100,8 @@ class JobRunner:
             await db.commit()
 
     async def submit(self, tool_id: str, account_id: int | None, params: dict[str, Any]) -> Job:
+        if self.blocked:
+            raise JobsBlocked(self.blocked)
         tool = get_tool(tool_id)
         tool.Input.model_validate(params)
         async with SessionLocal() as db:
@@ -161,11 +174,18 @@ class JobRunner:
         lock = self._account_locks.setdefault(account_id or 0, asyncio.Lock())
         try:
             async with lock:
+                pause = limits.current().job_pause - (time.monotonic() - self._last_end.get(account_id or 0, -1e9))
+                if account_id is not None and pause > 0:  # breathing room between jobs of one account
+                    await ctx.update(force=True, phase="queued", paused_until=(utcnow() + timedelta(seconds=pause)).isoformat())
+                    await asyncio.sleep(pause)
                 async with SessionLocal() as db:
                     await db.execute(update(Job).where(Job.id == job_id).values(status="running", started_at=utcnow()))
                     await db.commit()
                 await ctx.update(force=True, phase="starting")
-                result = await tool.run(ctx, tool.Input.model_validate(params))
+                try:
+                    result = await tool.run(ctx, tool.Input.model_validate(params))
+                finally:
+                    self._last_end[account_id or 0] = time.monotonic()
             await self._finish(ctx, "done", result=result)
         except asyncio.CancelledError:
             await self._finish(ctx, "cancelled")

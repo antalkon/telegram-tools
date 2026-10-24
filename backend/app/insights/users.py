@@ -10,9 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.insights import dossier
 from app.telegram.age import account_age
 from app.telegram.contacts import digits_query
-from app.insights.common import active_jobs, cards, exclusion_opts, excluded_ids, excluded_select, fts_query, peer_card, sql
+from app.insights.common import active_jobs, cards, exclusion_opts, excluded_ids, excluded_select, fts_query, peer_card, sql, starred_ids
 from app.insights.sources import heatmap, list_sources, message_link, thread_label, timeline
-from app.models import JobParticipant, PeerHistory, PeerNote, TgPeer, iso
+from app.models import ChannelPost, FoundChannel, JobParticipant, PeerHistory, PeerNote, TgPeer, iso
 
 SORTS = {
     "comments": "comments",
@@ -353,3 +353,22 @@ async def all_tags(db: AsyncSession) -> list[dict[str, Any]]:
     for tags in (await db.execute(select(PeerNote.tags))).scalars():
         counter.update(tags or [])
     return [{"tag": t, "count": n} for t, n in counter.most_common()]
+
+
+async def favorites(db: AsyncSession) -> dict[str, Any]:
+    """Everything marked with a star: people (channels that write as themselves included), sources (collected
+    chats) and other channels and chats."""
+    ids = await starred_ids(db)
+    srcs = [s for s in await list_sources(db, include_hidden=True) if s["starred"]]
+    src_ids = {s["id"] for s in srcs}
+    writers = set((await db.execute(select(JobParticipant.peer_id).where(
+        JobParticipant.peer_id.in_([i for i in ids if i < 0] or [0])).distinct())).scalars())
+    people = list((await cards(db, sorted(i for i in ids if i > 0 or (i in writers and i not in src_ids)))).values())
+    chan_ids = sorted(i for i in ids if i < 0 and i not in src_ids and i not in writers)
+    posts = dict((await db.execute(select(ChannelPost.channel_id, func.count()).where(
+        ChannelPost.channel_id.in_(chan_ids or [0])).group_by(ChannelPost.channel_id))).all())
+    found = dict((await db.execute(select(FoundChannel.peer_id, FoundChannel.members_count).where(
+        FoundChannel.peer_id.in_(chan_ids or [0])))).all())
+    channels = [c | {"posts": posts.get(i, 0), "found": i in found, "members_count": found.get(i)}
+                for i, c in (await cards(db, chan_ids)).items()]
+    return {"users": people, "sources": srcs, "channels": channels}

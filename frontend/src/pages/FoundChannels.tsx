@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { AddSourceDialog } from '../components/AddSource'
 import { Avatar } from '../components/Avatar'
-import { ExportMenu, PeerLine, Stat, useSources } from '../components/PeerBits'
+import { ExportMenu, PeerLine, StarButton, Stat, useSources } from '../components/PeerBits'
 import { AccountPicker, defaultAccount, TypeBadge, useAccounts } from '../components/SourceBits'
 import { useToast } from '../components/Toast'
 import { Badge, Button, Card, CardHeader, EmptyState, Input, ProgressBar, Segmented, Skeleton, Switch } from '../components/ui'
@@ -302,6 +302,7 @@ function Row({ c, picked, onPick, onIndex, onDismiss }: {
         <People c={c} />
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-start">
+        {c.peer_id != null && <StarButton peerId={c.peer_id} starred={c.starred} />}
         {!c.is_source && !c.dismissed && <Button size="sm" variant="secondary" icon={<Plus className="size-3.5" />} onClick={onIndex}>Индексировать</Button>}
         <Button size="sm" variant="ghost" icon={c.dismissed ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />} onClick={onDismiss}
           aria-label={c.dismissed ? 'Вернуть в предложения' : 'Скрыть из предложений'} title={c.dismissed ? 'Вернуть' : 'Скрыть'} />
@@ -320,7 +321,7 @@ export default function FoundChannels() {
   const qc = useQueryClient()
   const toast = useToast()
   const [params, setParams] = useSearchParams()
-  const status = (params.get('status') ?? 'new') as 'new' | 'sources' | 'dismissed' | 'all'
+  const status = (params.get('status') ?? 'new') as 'new' | 'sources' | 'dismissed' | 'starred' | 'all'
   const type = (params.get('type') ?? 'all') as 'all' | 'channel' | 'chat' | 'private'
   const via = (params.get('via') ?? 'all') as 'all' | 'personal' | 'bio' | 'sender' | 'forward' | 'mention' | 'similar'
   const sort = params.get('sort') ?? 'users'
@@ -386,6 +387,7 @@ export default function FoundChannels() {
                   { value: 'new', label: `Предложения ${counts?.new ?? ''}`.trim() },
                   { value: 'sources', label: `Уже источники ${counts?.sources ?? ''}`.trim() },
                   { value: 'dismissed', label: `Скрытые ${counts?.dismissed ?? ''}`.trim() },
+                  ...(counts?.starred || status === 'starred' ? [{ value: 'starred' as const, label: `Избранные ${counts?.starred ?? ''}`.trim() }] : []),
                 ]} />
               <Input aria-label="Поиск по названию, @username или описанию" placeholder="Название, @username, описание" value={search}
                 onChange={(e) => setSearch(e.target.value)} leading={<Search className="size-4" />} className="w-full sm:ml-auto sm:w-72" />

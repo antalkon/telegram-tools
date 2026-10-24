@@ -4,7 +4,7 @@ import { EyeOff, Search, Star, Tag, Users as UsersIcon } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Avatar } from '../components/Avatar'
-import { ExportMenu, Flags, SourceStack, useSources } from '../components/PeerBits'
+import { ExportMenu, Flags, SourceStack, useSources, StarButton } from '../components/PeerBits'
 import { Badge, Card, EmptyState, Input, Segmented, Skeleton } from '../components/ui'
 import { VirtualTable, type Column } from '../components/VirtualTable'
 import { UsersTabs } from '../components/UsersTabs'
@@ -82,7 +82,7 @@ export default function Users() {
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
               <span className={clsx('truncate text-[14px] font-medium', u.is_deleted && 'text-fg-subtle')}>{u.name}</span>
-              <Flags p={u} />
+              <Flags p={{ ...u, starred: false }} />
             </div>
             <div className="flex min-w-0 items-center gap-1.5 text-[12.5px]">
               <span className={clsx('truncate', u.username ? 'text-accent/90' : 'text-fg-subtle')}>{u.username ? `@${u.username}` : `ID ${u.peer_id}`}</span>
@@ -105,6 +105,7 @@ export default function Users() {
     },
     { key: 'posts', header: 'Обсужд.', width: '80px', sortKey: 'posts', align: 'right', hideBelow: 'lg', render: (u) => <span className="font-mono text-[13px] text-fg-muted tabular">{num(u.posts)}</span> },
     { key: 'last', header: 'Активность', width: '120px', sortKey: 'last_at', hideBelow: 'lg', render: (u) => <span className="text-[13px] text-fg-muted">{relative(u.last_at)}</span> },
+    { key: 'star', header: '', width: '36px', render: (u) => <StarButton peerId={u.peer_id} starred={!!u.starred} /> },
   ]
 
   const exportHref = (fmt: string) => `/api/users?${new URLSearchParams({ ...filters, format: fmt })}`

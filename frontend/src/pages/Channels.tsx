@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { AddSourceButton } from '../components/AddSource'
 import { Avatar } from '../components/Avatar'
+import { StarButton } from '../components/PeerBits'
 import { TypeBadge, words } from '../components/SourceBits'
 import { SourceActions, useMonitors } from '../components/SourceActions'
 import { Badge, Button, Card, EmptyState, Input, Segmented, Skeleton } from '../components/ui'
@@ -12,8 +13,11 @@ import { Page, PageHeader } from '../layout/AppLayout'
 import { api, intervalLabel, type Source } from '../lib/api'
 import { compact, num, relative } from '../lib/format'
 
-type Filter = 'all' | 'channel' | 'chat' | 'forum'
+type Filter = 'all' | 'channel' | 'chat' | 'forum' | 'starred'
 type Sort = 'people' | 'comments' | 'updated' | 'title'
+
+const matches = (s: Source, f: Filter) =>
+  f === 'all' || (f === 'starred' ? !!s.starred : f === 'forum' ? s.type === 'forum' : s.family === f)
 
 function SourceCard({ s, picked, onPick }: { s: Source; picked?: boolean; onPick?: () => void }) {
   const navigate = useNavigate()
@@ -45,6 +49,7 @@ function SourceCard({ s, picked, onPick }: { s: Source; picked?: boolean; onPick
             {s.subscribers != null && <span>{compact(s.subscribers)} {chat ? 'уч.' : 'подп.'}</span>}
           </div>
         </div>
+        <StarButton peerId={s.id} starred={!!s.starred} />
         {onPick && (
           <label className="flex size-9 items-center justify-center rounded-lg hover:bg-elevated" title="Выбрать для сравнения">
             <input type="checkbox" checked={picked} onChange={onPick} className="size-4 accent-[#2aabee]" aria-label={`Сравнить ${s.title}`} />
@@ -106,7 +111,7 @@ export default function Channels() {
   const list = useMemo(() => {
     const needle = q.trim().toLowerCase().replace(/^@/, '')
     const rows = (all.data ?? []).filter((s) =>
-      (filter === 'all' || (filter === 'forum' ? s.type === 'forum' : s.family === filter)) &&
+      matches(s, filter) &&
       (!needle || s.title.toLowerCase().includes(needle) || s.username?.toLowerCase().includes(needle)))
     const by: Record<Sort, (a: Source, b: Source) => number> = {
       people: (a, b) => b.people - a.people,
@@ -114,11 +119,12 @@ export default function Channels() {
       updated: (a, b) => (b.collected_at ?? '').localeCompare(a.collected_at ?? ''),
       title: (a, b) => a.title.localeCompare(b.title, 'ru'),
     }
-    return rows.sort(by[sort])
+    // favourites first, then the chosen order
+    return rows.sort((a, b) => Number(!!b.starred) - Number(!!a.starred) || by[sort](a, b))
   }, [all.data, filter, sort, q])
   const visible = list.filter((s) => !s.hidden)
   const hidden = list.filter((s) => s.hidden)
-  const count = (f: Filter) => (all.data ?? []).filter((s) => !s.hidden && (f === 'all' || (f === 'forum' ? s.type === 'forum' : s.family === f))).length
+  const count = (f: Filter) => (all.data ?? []).filter((s) => !s.hidden && matches(s, f)).length
 
   return (
     <Page wide>
@@ -160,6 +166,7 @@ export default function Channels() {
                 { value: 'channel', label: `Каналы ${count('channel')}` },
                 { value: 'chat', label: `Чаты ${count('chat')}`, hint: 'Группы, супергруппы и форумы' },
                 ...(count('forum') ? [{ value: 'forum' as const, label: `Форумы ${count('forum')}` }] : []),
+                ...(count('starred') ? [{ value: 'starred' as const, label: `Избранные ${count('starred')}` }] : []),
               ]}
             />
             <select aria-label="Сортировка" value={sort} onChange={(e) => set('sort', e.target.value, 'people')}

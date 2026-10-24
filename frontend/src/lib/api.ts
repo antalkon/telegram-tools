@@ -250,6 +250,7 @@ export interface Source {
   posts_with_comments: number | null
   runs: number
   hidden?: boolean
+  starred?: boolean
   running: boolean
   options: IndexerOptions
   input: string | null
@@ -414,6 +415,7 @@ export interface PostChannel {
   oldest: string | null
   avg_views: number | null
   via: ('account' | 'web')[]
+  starred: boolean
 }
 export interface Advertiser {
   inn: string | null
@@ -617,6 +619,7 @@ export interface FoundChannel {
   found_at: string | null
   checked_at: string | null
   is_source: boolean
+  starred: boolean
   via: { personal: number; bio: number; forward: number; mention: number; similar: number; sender: boolean }
   users: number
   people: PeerCard[]
@@ -624,7 +627,7 @@ export interface FoundChannel {
 
 export interface FoundChannelsPage {
   total: number
-  counts: { new: number; sources: number; dismissed: number; all: number }
+  counts: { new: number; sources: number; dismissed: number; starred: number; all: number }
   items: FoundChannel[]
 }
 
@@ -694,4 +697,60 @@ export interface DiscoveryStats {
   dismissed: number
   last_job: Job | null
   blocked: Partial<Record<FinderBlock, string>>
+}
+
+export interface Favorites {
+  users: PeerCard[]
+  sources: Source[]
+  channels: (PeerCard & { posts: number; found: boolean; members_count: number | null })[]
+}
+
+export type LimitsProfile = 'standard' | 'optimized' | 'custom'
+export interface LimitValues {
+  request_interval: number
+  history_interval: number
+  heavy_interval: number
+  file_interval: number
+  jitter: number
+  flood_sleep_threshold: number
+  avatar_concurrency: number
+  details_limit: number
+  details_ttl_days: number
+  web_page_delay: number
+  job_pause: number
+  adaptive: boolean
+}
+export type LimitsSettings = LimitValues & {
+  profile: LimitsProfile
+  presets: Record<'standard' | 'optimized', LimitValues>
+  fields: Record<Exclude<keyof LimitValues, 'adaptive'>, { min: number; max: number }>
+}
+export interface LimitsStats {
+  hours: number
+  floods: number
+  wait_seconds: number
+  requests: number
+  by_method: { method: string; count: number; max_seconds: number; total_seconds: number }[]
+  last: { at: string; account_id: number | null; method: string; seconds: number }[]
+  slowdown: Record<string, Record<string, number>>
+}
+
+export interface ArchiveInfo {
+  created_at: string | null
+  tables: Record<string, number>
+  files: number
+  avatars: number
+  includes_sessions: boolean
+  same_key: boolean
+}
+export type ImportMode = 'replace' | 'merge' | 'overwrite'
+export interface ImportResult {
+  mode: ImportMode
+  tables: Record<string, { added: number; updated: number; skipped: number }>
+  warnings: string[]
+  orphans_removed: number
+  backup: string | null
+  files: number
+  avatars: number
+  seconds: number
 }
