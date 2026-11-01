@@ -9,7 +9,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # ---- runtime: FastAPI + Telethon, serves the built frontend ----
-FROM python:3.13-slim
+FROM python:3.15-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
